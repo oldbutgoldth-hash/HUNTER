@@ -1,0 +1,6 @@
+{
+  "name": "Photo Client Hunter AI",
+  "description": "ระบบ AI สำหรับช่วยช่างภาพขายงานผ่าน Facebook, Page, Group และ Reels ช่วยวิเคราะห์ตลาดเป้าหมาย สร้างโพสต์ และตอบแชตเพื่อปิดการขาย",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
