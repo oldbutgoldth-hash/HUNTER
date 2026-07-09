@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { PhotographerProfile, ClientCRM, PhotoPackage } from "../types";
+import FacebookHub from "./FacebookHub";
 
 interface ProfileSettingsViewProps {
   profile: PhotographerProfile;
@@ -618,6 +619,9 @@ export default function ProfileSettingsView({
           </div>
         </div>
       </div>
+
+      {/* Facebook Integration Hub Section */}
+      <FacebookHub photographerName={profile.name} />
     </div>
   );
 }

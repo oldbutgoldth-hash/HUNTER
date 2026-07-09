@@ -24,960 +24,832 @@ app.use(express.json());
 // Initialize Gemini AI SDK
 const apiKey = process.env.GEMINI_API_KEY;
 const isRealAi = !!apiKey && apiKey !== "MY_GEMINI_API_KEY" && apiKey.trim() !== "";
-
 console.log(`[AI Initializer] API Key provided: ${isRealAi ? "YES" : "NO"}`);
 
 const ai = isRealAi ? new GoogleGenAI({
   apiKey: apiKey,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
+  httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
 }) : null;
 
-// Centralized System Instruction based on Thai Sales Psychology
 const SYSTEM_INSTRUCTION = getSystemInstruction();
 
-// API Routes
+// Helper to handle AI requests safely
+async function generateAIResponse(prompt: string, schema: any, fallback: any) {
+  if (isRealAi && ai) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          responseMimeType: "application/json",
+          responseSchema: schema
+        }
+      });
+      return JSON.parse(response.text || "{}");
+    } catch (err) {
+      console.error("Gemini API Error, using fallback:", err);
+    }
+  }
+  return fallback;
+}
 
 // 1. Target Market Analyzer
 app.post("/api/analyze-target", async (req, res) => {
   const { jobType, area, startingPrice, strengths, style, desiredClients } = req.body;
-
-  if (!jobType) {
-    return res.status(400).json({ error: "โปรดระบุประเภทงานถ่ายภาพ" });
-  }
+  if (!jobType) return res.status(400).json({ error: "โปรดระบุประเภทงานถ่ายภาพ" });
 
   const prompt = getTargetAnalyzerPrompt(jobType, area, startingPrice, strengths, style, desiredClients);
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      targetGroups: { type: Type.ARRAY, items: { type: Type.STRING } },
+      painPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
+      wordsToUse: { type: Type.ARRAY, items: { type: Type.STRING } },
+      wordsToAvoid: { type: Type.ARRAY, items: { type: Type.STRING } },
+      channels: { type: Type.ARRAY, items: { type: Type.STRING } },
+      contentStyles: { type: Type.ARRAY, items: { type: Type.STRING } },
+      engagementTriggers: { type: Type.ARRAY, items: { type: Type.STRING } },
+    },
+    required: ["targetGroups", "painPoints", "wordsToUse", "wordsToAvoid", "channels", "contentStyles", "engagementTriggers"],
+  };
 
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              targetGroups: { type: Type.ARRAY, items: { type: Type.STRING } },
-              painPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
-              wordsToUse: { type: Type.ARRAY, items: { type: Type.STRING } },
-              wordsToAvoid: { type: Type.ARRAY, items: { type: Type.STRING } },
-              channels: { type: Type.ARRAY, items: { type: Type.STRING } },
-              contentStyles: { type: Type.ARRAY, items: { type: Type.STRING } },
-              engagementTriggers: { type: Type.ARRAY, items: { type: Type.STRING } },
-            },
-            required: ["targetGroups", "painPoints", "wordsToUse", "wordsToAvoid", "channels", "contentStyles", "engagementTriggers"],
-          }
-        }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Gemini Error:", err);
-      // Fallback in case of API error
-    }
-  }
-
-  // Smart Thai Fallback
-  return res.json({
+  const fallback = {
     targetGroups: [
-      `กลุ่มลูกค้าที่ต้องการงาน ${jobType} คุณภาพสูง ในโซน ${area || "ทั่วไป"}`,
-      `กลุ่มคนที่ชอบภาพแนว ${style || "มินิมอล/ธรรมชาติ"} ที่ชอบความคุ้มค่าและเป็นกันเอง`,
-      `ผู้ใช้วัยรุ่น/วัยทำงานในช่องทางโซเชียลที่กำลังมองหาช่างภาพที่เข้าใจความต้องการ`
+      `กลุ่มลูกค้างาน ${jobType} คุณภาพพรีเมียม โซน ${area || "ทั่วไป"}`,
+      `กลุ่มคนรักภาพถ่ายโทน ${style || "พาสเทลเกาหลี/ธรรมชาติ"} คอนเซ็ปต์สดใส`,
+      `วัยรุ่นและคนทำงานที่อยากได้รูปโปรไฟล์สวยสะกดสายตาไว้ลงโซเชียล`
     ],
     painPoints: [
-      "กังวลเรื่องการโพสท่า กลัวถ่ายออกมาแล้วเกร็งหรือไม่เป็นธรรมชาติ",
-      "กังวลเรื่องความล่าช้าในการส่งรูป และกลัวได้รูปไม่ครบตามต้องการ",
-      "กลัวช่างภาพดุ อารมณ์เสีย หรือคุยยากในระหว่างการทำงาน"
+      "กังวลว่าโพสท่าไม่เป็น ถ่ายรูปออกมาเด๋อ เขินกล้องเกร็งหนักมาก",
+      "กลัวช่างภาพดุ เหวี่ยง อารมณ์บูดหน้างาน ทำให้บรรยากาศอึดอัด",
+      "กังวลเรื่องงานส่งรูปช้า ได้รูปไม่ตรงสเปก มู้ดโทนไม่ได้"
     ],
     wordsToUse: [
-      `"ดูแลใกล้ชิด สอนโพสท่าตลอดทริป"`,
-      `"โทนสีละมุน สไตล์ ${style || "ธรรมชาติ"} สวยจบพร้อมลงโซเชียล"`,
-      `"รับประกันส่งงานไว ภายในเวลากำหนดแน่นอน"`
+      `"ช่างภาพใจดีมาก ดูแลใกล้ชิด สอนกอดก้าวหมุนจัดท่าให้ตลอดทริป"`,
+      `"แต่งผิวเนียนคุมโทนสวยพาสเทล ${style || "ละมุน"} สวยเสร็จพร้อมลงฟีด"`,
+      `"การันตีส่งพรีวิวรูปรีวิวไฮไลท์ทันใจภายใน 24 ชั่วโมงคร้าบ"`
     ],
     wordsToAvoid: [
-      `"มัดจำแล้วห้ามยกเลิกทุกกรณี"`,
-      `"ราคาเน็ตๆ ไม่มีลดเพิ่ม"`,
-      `"ไม่รวมค่าเดินทาง ค่าอุปกรณ์ และอื่นๆ อีกมากมาย"`
+      `"มัดจำแล้วไม่มีนโยบายคืนเงินเด็ดขาด"`,
+      `"ค่าบริการเน็ตๆ งดต่อราคา"`,
+      `"ไม่รวมค่าเดินทางและพร็อพจัดฉากอื่นๆ"`
     ],
     channels: [
-      "Facebook ส่วนตัว: ใช้เล่าสตอรี่เบื้องหลังการทำงานเพื่อสร้างผู้ติดตามแบบกันเอง",
-      `Facebook Group ในพื้นที่ ${area || "ใกล้เคียง"}: โพสต์รีวิวงานเด็ดๆ เพื่อให้ตรงจุดคนหาช่างภาพ`,
-      "Instagram / Reels: โชว์ภาพสไลด์และคลิปสั้นเบื้องหลัง ดึงดูดด้วยสไตล์ภาพที่โดดเด่น"
+      `Facebook Group พื้นที่ ${area || "ใกล้เคียง"} เน้นโชว์ผลงานน่าเชื่อถือ`,
+      "Instagram / Reels คอนเทนต์วิดีโอสั้นสตอรี่เบื้องหลังความสนุก",
+      "Facebook แฟนเพจหลัก รีวิวผลงานและสเปเชียลโปรโมชั่นเร่งปิดยอดจอง"
     ],
     contentStyles: [
-      `โพสต์แชร์อัลบั้มเต็มของงาน ${jobType} พร้อมเล่าความประทับใจของลูกค้าในแคปชั่น`,
-      "ภาพเปรียบเทียบ Before vs After การแต่งโทนสีที่แสดงให้เห็นถึงฝีมือแต่งภาพอันพิถีพิถัน",
-      "คลิปเบื้องหลังการจัดท่าทาง (Pose Guide) สั้นๆ เพื่อพิสูจน์ว่าบริการนี้คุ้มค่าสำหรับคนโพสไม่เก่ง"
+      `แชร์พอร์ตเต็มของงาน ${jobType} พร้อมเล่าเบื้องหลังความประทับใจลูกค้า`,
+      "ภาพเปรียบเทียบ Before vs After การเกรดสีผิวผิวเนียนละออละมุนตา",
+      "คลิปสั้น Reels ยอดฮิตเผยทริกโพสท่าคนเขินกล้องให้ธรรมชาติดูแพง"
     ],
     engagementTriggers: [
-      "แจกโปรโมชั่นพิเศษ 'รับสิทธิ์จองคิวแถมฟรีภาพขนาดพิเศษ' สำหรับ 5 คิวแรกที่ทักเข้ามา",
-      "ทิ้งท้ายโพสต์ด้วยคำถามง่ายๆ เช่น 'ชอบภาพโทนละมุนแบบนี้ หรือสตรีทดาร์กๆ มากกว่ากัน คอมเมนต์บอกหน่อยน้า'",
-      "บอกตารางคิวว่างที่เหลือชัดเจน กระตุ้นความรีบเร่ง เช่น 'คิวสัปดาห์นี้เหลือเพียง 2 วันเท่านั้น ทักสอบถามได้เลยครับ'"
+      "แถมเซ็ตฟรีกระดาษการ์ดลายเซ็นหรือพรีเซตสีพิเศษสำหรับผู้คอมเมนต์",
+      "สร้างโปรโควตาจำกัดคิวว่างด่วนสัปดาห์ละ 2 สิทธิ์กระตุ้นทักแชตเดือด",
+      "ตั้งคำถามเลือกแนวโทนสีรูปที่ชอบที่สุดแจกส่วนลดมิตรภาพ"
     ]
-  });
+  };
+
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
 });
 
-// 2. AI Post Generator
-app.post("/api/generate-posts", async (req, res) => {
-  const { jobType, area, price, strengths, style, details, photographerName } = req.body;
-
-  const prompt = getPostGeneratorPrompt({ jobType, area, price, strengths, style, details, photographerName });
-
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              personalFb: { type: Type.STRING },
-              pageFb: { type: Type.STRING },
-              groupFb: { type: Type.STRING },
-              reelsCaption: { type: Type.STRING },
-              storyCaption: { type: Type.STRING },
-              hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
-              ctaMessage: { type: Type.STRING },
-              interactiveQuestion: { type: Type.STRING },
-            },
-            required: ["personalFb", "pageFb", "groupFb", "reelsCaption", "storyCaption", "hashtags", "ctaMessage", "interactiveQuestion"],
-          }
+// 2. Persona Generator
+app.post("/api/generate-personas", async (req, res) => {
+  const { jobType, style, startingPrice, serviceArea, photographerProfile } = req.body;
+  const pName = photographerProfile?.name || "ช่างภาพแสนดี";
+  const prompt = getPersonaPrompt(jobType || "ถ่ายภาพบุคคล", style || "ธรรมชาติ", serviceArea || "ทั่วไทย", startingPrice || "3,500", pName);
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      personas: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            demographics: { type: Type.STRING },
+            deepDesire: { type: Type.STRING },
+            mainObjection: { type: Type.STRING },
+            triggerWords: { type: Type.STRING },
+            upsellScript: { type: Type.STRING }
+          },
+          required: ["name", "demographics", "deepDesire", "mainObjection", "triggerWords", "upsellScript"]
         }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Gemini Post Gen Error:", err);
-    }
-  }
-
-  // Thai Fallback
-  const name = photographerName || "ช่างภาพ";
-  return res.json({
-    personalFb: `📸✨ “ภาพถ่ายไม่ได้บันทึกแค่ใบหน้า แต่เก็บบันทึกความอบอุ่นและโมเมนต์ที่ไม่มีวันย้อนกลับมา...”\n\nวันนี้เอาผลงานถ่าย ${jobType} สไตล์ ${style} ล่าสุดมาฝากทุกคนครับ เป็นคิวงานที่สนุกและประทับใจมากๆ ลูกค้าน่ารักเป็นกันเองสุดๆ แฮปปี้ทั้งคนถ่ายและคนถูกถ่ายเลย 😊\n\nสำหรับใครที่โพสท่าไม่เป็น กลัวหน้ากล้อง เกร็งๆ อยากให้ลองเปิดใจมาคุยกันก่อนได้นะครับ ผมเน้นดูแลใกล้ชิด สอนโพสท่าตลอดการถ่าย สไตล์ภาพของเราเน้นความสดใส อารมณ์ธรรมชาติเต็มๆ เสมือนมาเที่ยวเล่นแล้วได้รูปพรีเมียมกลับบ้านไปอวดเพื่อน!\n\n📍 พื้นที่ให้บริการ: ${area || "ทุกพื้นที่ทั่วไทย"}\n💸 ค่าบริการคุ้มๆ สบายกระเป๋า เริ่มต้นเพียง ${price || "ราคามิตรภาพ"}\n\nใครอยากมีเซ็ตภาพเก็บความทรงจำสวยๆ แบบนี้ ทัก inbox มาถามคิวคุยเล่นกันก่อนได้นะครับ ยินดีให้บริการมากๆ เลยค้าบ ❤️👇`,
-    pageFb: `📢✨ [เปิดรับคิวถ่ายภาพ] บริการถ่าย ${jobType} ระดับมืออาชีพ โดยทีมงาน ${name}\n\nหากคุณกำลังมองหาภาพถ่ายที่มีคุณภาพ คมชัด สีสันสดใส และมีโทนสีเฉพาะตัวสไตล์ ${style} ที่สะท้อนตัวตนของคุณได้อย่างสมบูรณ์แบบที่สุด!\n\n🌟 ทำไมต้องเลือกเรา?\n✔️ จุดเด่น: ${strengths || "บริการสอนโพสท่า ถ่ายรูปไว เป็นกันเอง ส่งงานรวดเร็ว"}\n✔️ การันตีภาพถ่ายสวยงาม โทนสีละมุน เหมาะสำหรับลง Social Media ทุกแพลตฟอร์ม\n✔️ มีบริการให้คำแนะนำสถานที่ เสื้อผ้า และแนวภาพที่เหมาะสมกับคุณ\n\n💼 รายละเอียดบริการและอัตราค่าบริการ:\n- บริการถ่ายภาพ ${jobType} ราคาเริ่มต้นเพียง ${price || "ราคากันเอง"}\n- บริการทั้งนอกและในสถานที่ โซน ${area || "กรุงเทพฯ และปริมณฑล"}\n- ส่งไฟล์รูปปรับแสงสีทุกรูป พร้อมส่งไฟล์ High-Res ความละเอียดสูง\n\n📥 สนใจสอบถามและสำรองคิวถ่ายภาพ:\n💬 ทักแชตเพจ (Inbox) ได้ตลอด 24 ชั่วโมง\n📞 หรือโทรสอบถามคิวว่างด่วนได้เลยครับ!`,
-    groupFb: `สวัสดีชาวกลุ่มหาช่างภาพทุกคนครับ 🙏📸 ขออนุญาตแชร์ผลงานและฝากเนื้อฝากตัวด้วยคนนะครับ\n\nผมจากเพจ ${name} รับถ่ายงาน ${jobType} สไตล์ภาพแนว ${style} พิกัด ${area || "ทั่วไป"} ราคาเริ่มต้นสบายๆ เพียง ${price || "มิตรภาพ"} บาทเท่านั้นครับน้าคราบบบ\n\nช่างภาพเป็นกันเอง อารมณ์ดี ไม่กดดัน สอนโพสท่าจัดร่างกายทุกท่วงท่าเพื่อให้ได้จังหวะรอยยิ้มที่เป็นคุณที่สุดน้าค้าบ สนใจจองคิวแชตคุยกันได้เลยคร้าบ! 😊❤️`,
-    reelsCaption: `🎬📸 ความเป็นธรรมชาติคือความสวยที่สุดในตัวคุณ... เบื้องหลังทริปถ่ายภาพสนุกๆ ของช่างภาพสายฮา สอนโพสไกด์ท่าทางละลายพฤติกรรมจนตัวแบบฟินตลอดวัน สนใจจองล็อกวันทัก DM แชตเลยจ้า! ✨`,
-    storyCaption: `✨📸 ล็อกคิวด่วนสัปดาห์นี้ว่างกะทันหัน 1 วัน! แชตทักเลยจ้า`,
-    hashtags: ["หาช่างภาพ", `รับถ่ายภาพ${jobType}`, "ช่างภาพอารมณ์ดี", "สอนโพสท่าทาง", "โทนสีละมุน"],
-    ctaMessage: `สนใจล็อกคิวพิเศษแถมภาพจัดพรีเมียมเพิ่ม ทัก inbox คุยเรื่องแนวภาพกันได้น้าค้าบ! 👇📱`,
-    interactiveQuestion: `คุณชอบภาพแนวโทนละมุนฟุ้งๆ หรือคมชัดคลีนๆ มากกว่ากัน คอมเมนต์บอกหน่อยน้า 👇😊`
-  });
-});
-
-// 3. AI Post Score System
-app.post("/api/score-post", async (req, res) => {
-  const { postContent, jobType, targetStyle } = req.body;
-
-  if (!postContent) {
-    return res.status(400).json({ error: "โปรดระบุเนื้อหาโพสต์ที่ต้องการประเมิน" });
-  }
-
-  const prompt = getPostScoringPrompt(postContent, jobType, targetStyle);
-
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              score: { type: Type.INTEGER },
-              criteria: {
-                type: Type.OBJECT,
-                properties: {
-                  hook: { type: Type.INTEGER },
-                  targetRelevance: { type: Type.INTEGER },
-                  sellability: { type: Type.INTEGER },
-                  credibility: { type: Type.INTEGER },
-                  ctaClarity: { type: Type.INTEGER },
-                  commentOpportunity: { type: Type.INTEGER },
-                  personalFbSuitability: { type: Type.INTEGER },
-                },
-                required: ["hook", "targetRelevance", "sellability", "credibility", "ctaClarity", "commentOpportunity", "personalFbSuitability"],
-              },
-              strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
-              improvements: { type: Type.ARRAY, items: { type: Type.STRING } },
-              ctaTips: { type: Type.ARRAY, items: { type: Type.STRING } },
-              upgradedVersion: { type: Type.STRING },
-            },
-            required: ["score", "criteria", "strengths", "improvements", "ctaTips", "upgradedVersion"],
-          }
-        }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Post Scoring Error:", err);
-    }
-  }
-
-  // Thai Fallback
-  return res.json({
-    score: 78,
-    criteria: {
-      hook: 75,
-      targetRelevance: 80,
-      sellability: 70,
-      credibility: 85,
-      ctaClarity: 75,
-      commentOpportunity: 70,
-      personalFbSuitability: 80
+      }
     },
-    strengths: [
-      "มีการใช้ภาษาที่เป็นกันเองและอบอุ่น เข้าถึงกลุ่มลูกค้าได้ง่าย",
-      "มีรายละเอียดของสไตล์โทนภาพที่ค่อนข้างชัดเจน",
-      "แสดงความน่าเชื่อถือและความประทับใจของช่างภาพอย่างจริงใจ"
-    ],
-    improvements: [
-      "ประโยคแรก (Hook) ยังไม่สะดุดตาพอที่จะหยุดนิ้วคนเลื่อนฟีดได้ทันที",
-      "ยังขาดข้อเสนอสิทธิพิเศษและจิตวิทยาความรีบเร่ง (Scarcity) ในการปิดการขาย",
-      "ช่องทางการสั่งซื้อหรือคำทักแชต (CTA) ยังไม่ดึงดูดใจและรู้สึกง่ายพอสำหรับมือใหม่"
-    ],
-    ctaTips: [
-      "ควรเน้นความสะดวกรวดเร็วในการปิดจ๊อบ เช่น การล็อกวันว่างแบบยืดหยุ่น",
-      "แนะนำเพิ่มสิทธิ์ของแถมกระตุ้นการตัดสินใจในโพสต์ทันที"
-    ],
-    upgradedVersion: `✨📸 “เคยไหม... อยากมีรูปคู่สวยๆ โทนละมุนแต่อายหน้ากล้อง ไม่รู้ต้องโพสท่าตรงไหน?”\n\nวางใจได้เลยครับ! คิวถ่ายงาน ${jobType || "ถ่ายภาพ"} โทน ${targetStyle || "ธรรมชาติ"} ล่าสุดของผมเน้นความปล่อยชิล ดูแลสอนโพสจัดทิศทางแสงเงาเป็นธรรมชาติสูงสุดเสมือนไปเที่ยวกับเพื่อนสนิท 🤣\n\n💸 พิเศษล็อกสิทธิ์มัดจำ 5 ท่านแรกในสัปดาห์นี้ แถมฟรีทันทีภาพพิเศษพรีเมียมรีทัช 5 รูปคุ้มจุใจ!\n💬 ทัก Inbox แชตคุยไอเดียโทนภาพและเช็กวันว่างกับผมได้เลยนะคร้าบบบ! 👇❤️`
-  });
+    required: ["personas"]
+  };
+
+  const fallback = {
+    personas: [
+      {
+        name: "น้องเมย์ - ว่าที่บัณฑิตจบใหม่สายโซเชียลด่วนลงสตอรี่",
+        demographics: "อายุ 21-23 ปี, ชอบแชร์ Reels และ TikTok คลั่งไคล้โทนเกาหลีละมุน",
+        deepDesire: `รูปเดี่ยวพอร์ตเทรตฉลองวันสำเร็จการศึกษา สไตล์ ${style || "ละมุน"} สวยโดดเด่นสะดุดตาเพื่อนฝูง`,
+        mainObjection: "เกร็งหน้ากล้องสุดขีด กลัวรูปออกมาหน้าบึ้งโพสไม่เป๊ะ",
+        triggerWords: "ช่วยจัดท่าเป๊ะปัง, ส่งพรีวิวไฮไลท์ด่วนใน 24 ชม., ตลกเป็นกันเองเป็นมิตร",
+        upsellScript: `“ยินดีด้วยล่วงหน้าน้าคุณเมย์ 😊 สำหรับแพ็กเกจซิกเนเจอร์ยอดฮิต เราเพิ่มเวลาถ่ายภาพคูณสอง หามุมสลัวแสง Golden hour สวยสดชื่นพรีเมียม แถมฟรีรูปพัดปริ้นท์แคนวาสใหญ่ไปกอดวันรับจริงด้วยครับ แนะนำตัวนี้คุ้มค่าที่สุดแน่นอนคร้าบ!”`
+      },
+      {
+        name: "คุณบี - คุณแม่รุ่นใหม่สายอบอุ่นหัวใจโฮมมี่",
+        demographics: "อายุ 31-37 ปี, พนักงานบริษัทหรือเจ้าของแบรนด์, มีลูกน้อยน่าเอ็นดู 1-2 คน",
+        deepDesire: `บันทึกโมเมนต์ความน่ารักและอบอุ่นรอยยิ้มครอบครัว คุมแสงธรรมชาติสวยหรูย้อนดูประทับใจ`,
+        mainObjection: "กลัวเด็กๆ งอแงหน้ากล้องจนภาพเด๋อ และหวั่นช่างภาพโมโหดุร้ายง่าย",
+        triggerWords: "รักเด็กใจดีเป็นกันเอง, เน้นจับภาพทีเผลอธรรมชาติ, ชิวสบายไม่เร่งรีบ",
+        upsellScript: `“ดีใจมากๆ ที่ทักมาน้าคุณบี ช่างภาพขอแนะนำเซ็ตอุ่นใจโฮมมี่เลยครับ เราจะใช้เวลาชิวๆ เล่นตลกละลายพฤติกรรมหนูๆ ได้เต็มที่ ไม่เร่งรีบ ได้รอยยิ้มเผลอสวยละมุนอุ่นใจครบครอบครัวคุ้มค่าที่สุดครับผม 🥰👇”`
+      }
+    ]
+  };
+
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
 });
 
-// 4. Content Calendar (7-Day Plan)
+// 3. Post Generator
+app.post("/api/generate-posts", async (req, res) => {
+  const { jobType, area, startingPrice, strengths, style, photographerProfile } = req.body;
+  const pName = photographerProfile?.name || "ช่างภาพแสนดี";
+  const prompt = getPostGeneratorPrompt({
+    jobType: jobType || "ถ่ายภาพบุคคล",
+    area: area || "ทั่วไทย",
+    price: startingPrice || "3,500",
+    strengths: strengths || "ช่วยสอนจัดท่าโพส เป็นกันเอง อารมณ์ดีชวนคุย",
+    style: style || "ธรรมชาติละมุน",
+    photographerName: pName
+  });
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      personalFb: { type: Type.STRING },
+      pageFb: { type: Type.STRING },
+      groupFb: { type: Type.STRING },
+      reelsCaption: { type: Type.STRING },
+      storyCaption: { type: Type.STRING },
+      hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
+      ctaMessage: { type: Type.STRING },
+      interactiveQuestion: { type: Type.STRING },
+    },
+    required: ["personalFb", "pageFb", "groupFb", "reelsCaption", "storyCaption", "hashtags", "ctaMessage", "interactiveQuestion"],
+  };
+
+  const fallback = {
+    personalFb: `📸✨ “รูปถ่ายที่ดีไม่ได้เก็บบันทึกแค่ใบหน้า แต่เก็บบันทึกช่วงความสุขและความอบอุ่นที่ย้อนกลับมาไม่ได้...”\n\nวันนี้มีผลงานถ่าย ${jobType || "ภาพเดี่ยวพอร์ตเทรต"} สไตล์โทน ${style || "เกาหลีละมุน"} สุดน่ารักมาอวดทุกคนครับ ทริปนี้หัวเราะสนุกเป็นกันเองสุดขีด 😊\n\nใครโพสท่าไม่ถูก โพสแล้วเกร็ง ไม่ต้องกังวลนะครับ ช่างภาพดูแลสอนจัดกอดก้าวหมุนละเอียดยิบ เสมือนมาเที่ยวเล่นเฮฮาแล้วมีรูปโปรไฟล์พรีเมียมกลับไปลงอินสตาแกรมสวยๆ!\n\n📍 พิกัดรับงาน: ${area || "ทุกพิกัดจัดเต็ม"}\n💸 ค่าบริการเริ่มต้นสบายใจ: ${startingPrice || "ราคากันเอง"}\n\nใครอยากได้เซ็ตภาพความทรงจำอุ่นๆ แบบนี้ ทัก inbox มาถามคิวคุยเล่นกันก่อนได้นะคร้าบบบ ช่างภาพยินดีบริการสุดฝีมือเลยคร้าบผม ❤️👇`,
+    pageFb: `📢✨ [เปิดรับจองคิวถ่ายรูป] บริการถ่าย ${jobType || "ภาพพรีเมียม"} โดยช่างภาพแบรนด์ ${pName}\n\nให้ความทรงจำของคุณเฉิดฉายด้วยความคมชัด มู้ดแสงและสไตล์โทนสี ${style || "ละมุนพาสเทล"} เฉพาะตัวที่สว่างใสโดดเด่นสะท้อนอารมณ์เรียบหรูเป็นธรรมชาติ!\n\n🌟 ไฮไลท์ดีลพรีเมียม:\n✔️ ${strengths || "สอนจัดโพสท่าละเอียด เป็นกันเองอารมณ์ดี ไม่กดดัน"}\n✔️ คัดสรรปรับเกรดสีผิวผิวเนียนละเมียดละออทุกภาพ\n\n💼 ราคาแพ็กเกจเริ่มต้นเพียง ${startingPrice || "3,500"} บาทเท่านั้นคราบบบ\n\n*จองวันนี้ล็อกคิวรอบเวลาแสง Golden Hour อุ่นๆ ด่วน ทัก Inbox แชทเพจเพื่อรับสิทธิ์เลยคร้าบ!*`,
+    groupFb: `สวัสดีครับฝากเนื้อฝากตัวด้วยคร้าบคุณแม่คุณน้า 🙏📸 ช่างภาพสไตล์ ${style || "อบอุ่นใจ"} ยินดีรับใช้บริการงานถ่าย ${jobType || "พอร์ตเทรต"} คร้าบผม เน้นคุยสบายๆ ไม่เร่งรีบ สนุกสนานเป็นมิตร\n\nเปิดโปรสเปเชียลอัตรามิตรภาพ เริ่มต้นเพียง ${startingPrice || "กันเอง"} บาทเท่านั้นคร้าบ!\n\n📷 ไฟล์แต่งสีแสงเกรดพาสเทลสวยงามจบพร้อมลงอวดเพื่่อน\n⚡ จัดส่งด่วนรีวิวไฮไลท์แรกสุดใน 24 ชม.\n\nสนใจส่องผลงานพอร์ตเพิ่มเติมและล็อกรอบวัน ทักอินบ็อกซ์คุยเล่นส่งมู้ดที่อยากได้มาคุยกันได้เลยคราบบบ ✉️👇`,
+    reelsCaption: `เมื่อคุณบอกช่างภาพว่า "หนูเขินกล้องโพสไม่รอด แขนขากลัวเกร็งเก้งก้าง!" 🥺📸 สบายใจได้เลยคร้าบ ช่างภาพพกความเป็นกันเองเต็มพิกัด บิวท์อารมณ์หัวเราะสดใส สอนกอดก้าวหมุนทีเผลอแบบพริ้วไหวเป็นธรรมชาติสุดๆ 🥰✨\n\n#ช่างภาพใจดี #สอนจัดท่าโพส #โทนละมุน`,
+    storyCaption: `📸 วันว่างถ่ายรูปยอดฮิตสัปดาห์นี้ใกล้เต็มโควตาแล้วน้าคร้าบ สนใจจองตารางทัก Inbox ด่วนเลยนะคร้าบผม 🥰👇`,
+    hashtags: ["ช่างภาพ", `ถ่าย${jobType || "รูป"}`, style || "โทนพาสเทล", "สอนโพสท่า"],
+    ctaMessage: "โควตาประณีตจำกัดรับสัปดาห์ละ 2 ท่านเท่านั้นน้า ทัก inbox ส่งความปรารถนาหาช่างภาพตอนนี้ได้เลยครับ!",
+    interactiveQuestion: "ชอบภาพแนวสตリートเท่ๆ คูลๆ หรือแสงเย็นเกาหลีพาสเทลอุ่นใจมากกว่ากัน กดโหวตคอมเมนต์บอกกันน้า 👇✨"
+  };
+
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
+});
+
+// 4. Content Calendar Planner
 app.post("/api/generate-calendar", async (req, res) => {
-  const { name, area, startingPrice, strengths, style, jobTypes } = req.body;
-
-  const prompt = getCalendarPrompt(jobTypes?.join(", "), style, startingPrice, area);
-
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              calendar: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    day: { type: Type.INTEGER },
-                    dayName: { type: Type.STRING },
-                    topic: { type: Type.STRING },
-                    purpose: { type: Type.STRING },
-                    channel: { type: Type.STRING },
-                    caption: { type: Type.STRING },
-                    imageSuggestion: { type: Type.STRING },
-                    cta: { type: Type.STRING },
-                    category: { type: Type.STRING },
-                  },
-                  required: ["day", "dayName", "topic", "purpose", "channel", "caption", "imageSuggestion", "cta", "category"],
-                }
-              }
-            },
-            required: ["calendar"],
-          }
+  const { jobType, style, startingPrice, serviceArea } = req.body;
+  const prompt = getCalendarPrompt(jobType || "ถ่ายภาพบุคคล", style || "ธรรมชาติ", startingPrice || "3,500", serviceArea || "ทั่วไทย");
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      calendar: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            day: { type: Type.INTEGER },
+            dayName: { type: Type.STRING },
+            topic: { type: Type.STRING },
+            purpose: { type: Type.STRING },
+            channel: { type: Type.STRING },
+            category: { type: Type.STRING },
+            caption: { type: Type.STRING },
+            imageSuggestion: { type: Type.STRING },
+            cta: { type: Type.STRING }
+          },
+          required: ["day", "dayName", "topic", "purpose", "channel", "category", "caption", "imageSuggestion", "cta"]
         }
-      });
+      }
+    },
+    required: ["calendar"]
+  };
 
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Gemini Calendar Error:", err);
-    }
-  }
-
-  // Thai Fallback
-  const job = jobTypes?.join(", ") || "ถ่ายภาพ";
-  return res.json({
+  const fallback = {
     calendar: [
       {
         day: 1,
-        dayName: "วันจันทร์",
-        topic: "เปิดตัวอัลบั้มภาพผลงานเซ็ตล่าสุดชวนประทับใจ",
-        purpose: "แสดงความสามารถในการถ่ายทอดอารมณ์และองค์ประกอบภาพ",
-        channel: "Facebook Page",
-        caption: `สปอยความสุขย้อนหลังกับเซ็ตภาพถ่าย ${job} ล่าสุดครับน้า บรรยากาศอบอุ่นละมุนใจ โพสท่าเป็นธรรมชาติสุดๆ ดีใจที่ได้เป็นส่วนหนึ่งในการเก็บบันทึกความทรงจำนะคร้าบ ❤️📸`,
-        imageSuggestion: "ภาพเซ็ตแนวตั้ง 3-4 ภาพ คุมโทนสีอบอุ่นสดใสสะกดสายตา",
-        cta: "แวะทักInboxมาปรึกษามุมสวยๆ ล็อกคิวจองเดือนนี้ก่อนเต็มได้น้าคราบบบ",
-        category: "ผลงานล่าสุด"
+        dayName: "วันจันทร์ - คอนเทนต์แชร์งานชิ้นโบว์แดง",
+        topic: `เปิดตัวภาพเดี่ยวไฮไลท์สวยละมุนอุ่นใจ`,
+        purpose: "นำเสนอฝีมือการจัดแสงเฉียบคมมัดใจ ดึงดูดความอยากรู้สไตล์สตอรี่ลิ่ง",
+        channel: "Facebook Page + IG Grid",
+        category: "ผลงานล่าสุด",
+        caption: `🌈✨ “รอยยิ้มและโมเมนต์อุ่นๆ บันทึกในกล่องเวลาแสนวิเศษ...”\n\nสปอยผลงานถ่ายภาพสไตล์ ${style || "พาสเทลละมุน"} ยามบ่ายแสงส่องนุ่มๆ ผิวเรียบเนียนละเอียดน่าสัมผัส ลูกค้าแฮปปี้ช่างภาพก็ยิ้มแก้มปริ ทัก Inbox คุยเล่นไอเดียถ่ายภาพเดี่ยวได้ตลอดเวลาเลยค้าบผม 🥰🤍`,
+        imageSuggestion: "รูปไฮไลท์ถ่ายแนวละลายหลัง 3-4 ภาพคัดโทนเดียวกันสวยเด่นสะกดตา",
+        cta: "แวะเข้ามาชมรูปแล้วบอกมู้ดภาพแนวที่ถูกชะตาคุณกันน้าคร้าบ"
       },
       {
         day: 2,
-        dayName: "วันอังคาร",
-        topic: "เบื้องหลังการสอนโพสท่าขำๆ ชิลๆ หน้างาน",
-        purpose: "ลดความเกร็งละลายพฤติกรรมลูกค้า บ่งบอกช่างภาพใจดีเป็นกันเอง",
-        channel: "Facebook Story / Reels",
-        caption: "เบื้องหลังการถ่ายรูปฉบับตัวแม่ตัวมัม ไม่ต้องห่วงเรื่องหามุมเกร็ง ช่างภาพคนนี้พร้อมสอนโพสไกด์ท่าทางให้ทุกสเต็ป ตลกเป็นกันเองแน่นอนครับน้า! 🤣✨",
-        imageSuggestion: "คลิปวิดีโอสั้นหรือภาพแคนดิดตลกๆ ระหว่างไกด์ท่าทางให้ตัวแบบ",
-        cta: "สะดวกวันไหนล็อกคิวด่วนทัก Inbox คุยเล่นคุยไอเดียกันก่อนได้เลยนะครับ",
-        category: "เบื้องหลัง"
+        dayName: "วันอังคาร - คอนเทนต์วิดีโอเบื้องหลังฮาๆ",
+        topic: "เบื้องหลังความสดใสช่วยแก้เขินอายฉลุย",
+        purpose: "ละลายความกลัวเรื่องช่างภาพดุโหด แนะนำบุคลิกความสบายๆ เป็นมิตรวางใจได้",
+        channel: "Reels / TikTok",
+        category: "เบื้องหลัง",
+        caption: "“เมื่อลูกค้าบ่นโพสไม่ไหว กลัวดูเกร็งกล้อง ช่างภาพจัดบทคุยตลกกระตุ้นต่อมฮาหัวเราะพริ้วธรรมชาติเฉยเลยคร้าบ!” 😆📸 บิวท์อารมณ์สดชื่นพร้อมภาพพรีเมียมกลับบ้านชิวๆ",
+        imageSuggestion: "วิดีโอคลิปสั้นแนวตั้งความยาว 15 วิ เผยช่วงหลุดขำตลกเป็นกันเองหน้ากล้อง",
+        cta: "ใครกลัวเขินกล้องรีบกดแชร์แชตเพจนี้ต้อนรับบริการแบบชิวผ่อนคลายเลยคราบบบ!"
       },
       {
         day: 3,
-        dayName: "วันพุธ",
-        topic: "แชร์เคล็ดลับเด็ดๆ ขยับตัวอย่างไรให้หุ่นสวยเพรียว",
-        purpose: "ส่งมอบคุณค่าที่เป็นประโยชน์ (Value Content) สร้างความน่าเชื่อถือทางเทคนิค ความละเอียดใส่ใจ และความคุ้งค่าของการรีทัช",
-        channel: "Facebook ส่วนตัว / Page",
-        caption: "🎞️✨ ก่อนแต่งคือภาพสวยแล้ว หลังดึงสีคือฟิล์มเกาหลีฟิลกู้ดพุ่งขึ้น 300%! งานแต่งละเอียดทุกใบเพื่อให้ทุกคนประทับใจที่สุดเมื่อย้อนกลับมาดูรูปครับ",
-        imageSuggestion: "ภาพเดี่ยวแบบเลื่อน Slide หรือแบ่งครึ่งเปรียบเทียบไฟล์ RAW ดิบ และไฟล์แต่งเสร็จเด็ดๆ",
-        cta: "ชอบความเปรียบต่างโทนแสงสีแบบนี้ทักมาจองแพ็กเกจปรับโทนพิเศษได้เลยค้าบ",
-        category: "Before / After"
-      },
-      {
-        day: 4,
-        dayName: "วันพฤหัสบดี",
-        topic: "รีวิวความน่ารักและความประทับใจจากปากลูกค้าจริง",
-        purpose: "สร้างความน่าเชื่อถือทางสังคม (Social Proof) สลายความกังวลของลูกค้าใหม่",
-        channel: "Facebook Page / Story",
-        caption: "💬❤️ 'ช่างภาพพูดเก่งมาก สอนโพสดีสุดๆ ถ่ายรูปไว ได้รูปครบถูกใจมากๆ เลยค่า' ขอบคุณรีวิวที่อบอุ่นใจแบบนี้น้า มันคือพลังใจทำงานต่อไปจริงๆ ครับ!",
-        imageSuggestion: "รูปแคปหน้าจอบทสนทนาชื่นชมใน LINE หรือแชตเฟสบุ๊ก คู่กับภาพที่ดีที่สุดของคิวถ่ายนั้น",
-        cta: "อยากฟินอยากได้ประสบการณ์ถ่ายรูปชิลๆ แบบนี้ ทัก inbox มาจับจองคิวว่างกันครับ",
-        category: "รีวิวลูกค้า"
-      },
-      {
-        day: 5,
-        dayName: "วันศุกร์",
-        topic: "เล่าเคสลูกค้าสุดพีคหรือสตอรี่ประทับใจหน้างานอย่างมีอารมณ์ร่วม",
-        purpose: "เชื่อมโยงความสัมพันธ์ส่วนตัว (Engagement) ผ่าน Storytelling ที่มีเสน่ห์",
-        channel: "Facebook ส่วนตัว",
-        caption: "🌧️📸 ลูกค้าบอกกลัวฝนจะตกพายุจะเข้า แต่ผมบอกลุยเลยครับพี่! และนี่คือผลลัพธ์ของรูปกลางสายหมอกบางๆ ที่สวยโรแมนติกเหมือนหลุดมาจากหนังรักเกาหลีเลย",
-        imageSuggestion: "ภาพคู่รักหรือภาพเดี่ยวที่มีบรรยากาศโรแมนติก แฝงสตอรี่เบื้องหลังการแก้ไขสถานการณ์",
-        cta: "มีใครชอบพายุฝนโรแมนติกแบบนี้บ้าง แชทมาแชร์ความคิดเห็นกันได้นะครับ!",
-        category: "เล่าเคสลูกค้า"
-      },
-      {
-        day: 6,
-        dayName: "วันเสาร์",
-        topic: "ประกาศคิวว่างหรือโปรโมชั่นด่วนประจำสัปดาห์ / เดือน",
-        purpose: "เร่งยอดขาย ปิดคิวว่างโดยตรงด้วยข้อเสนอด่วนที่มีขีดจำกัด",
-        channel: "Facebook Group / Story",
-        caption: `🔥🗓️ ด่วนมากทุกคน คิวถ่ายภาพสุดสัปดาห์นี้ว่างกะทันหัน 1 คิวเท่านั้น! โอกาสดีสำหรับใครอยากถ่ายงาน ${job} ในราคาสุดพิเศษพร้อมแถมรูปเพิ่มจุใจ!`,
-        imageSuggestion: "ภาพถ่ายมุมกว้างโชว์สไตล์อลังการพรีเมียม สกรีนอักษรคิวว่างตัวโตๆ อ่านง่าย",
-        cta: "ใครไวสุดได้สิทธิ์ไปครอง ทัก inbox แชตเฟสสอบถามโปรโมชั่นและจองด่วนครับ!",
-        category: "เปิดคิวว่าง"
-      },
-      {
-        day: 7,
-        dayName: "วันอาทิตย์",
-        topic: "เสนอไอเดียแพ็กเกจยอดฮิตสำหรับครอบครัว/พรีเวดดิ้ง/เดี่ยวโปรไฟล์",
-        purpose: "นำเสนอสินค้าและบริการอย่างสุภาพ ครบถ้วน ทรงพลัง สะดุดตาก่อนเริ่มสัปดาห์ใหม่",
-        channel: "Facebook Page / Facebook ส่วนตัว",
-        caption: "✨💼 มัดรวมแพ็กเกจถ่ายภาพที่ดีที่สุดในรอบปี! ไม่ว่าจะเป็นงานแต่ง งานพรีเวดดิ้ง หรือรูปโปรไฟล์ส่งสมัครงาน ครบจบ ดูแลครบทุกขั้นตอนอย่างพรีเมียม",
-        imageSuggestion: "กราฟิกดีไซน์แพ็กเกจเรียบร้อย สวยงาม มีรูปตัวอย่างประกอบสไตล์เด่นสะดุดตา",
-        cta: "ทักแชตเพื่อรับแคตตาล็อกราคาเต็มและสิทธิพิเศษจองก่อนใครวันนี้!",
-        category: "โปรโมชัน"
+        dayName: "วันพุธ - สาระความรู้แก้ปวดตับ",
+        topic: "เผยวิธีจัดท่าโพสฉลองรอยยิ้มฉบับคนเขินกล้อง",
+        purpose: "สร้างความรู้ความเชี่ยวชาญ (Authority Expert) และช่วยเหลือละลายปมความกังวลใจของลูกค้ายอดฮิต",
+        channel: "Facebook Page + IG Carousel",
+        category: "สาระความรู้",
+        caption: "💡📸 [แชร์ทริกคนพกความเขินระดับสิบ] โพสท่ายังไงไม่ให้ดูเด๋อด๋าแขนขาเกร็งกล้อง!\n\n1. เดินหันหลัง 45 องศาแล้วเอี้ยวตัวหน้ายิ้ม\n2. สองมือกำสร้อย หมวก แก้วกาแฟช่วยละลายความลนลาน\n3. หลับตาปัดฝุ่นจังหวะลึกๆ ยิ้มแป้นพริ้วไหวธรรมชาติสุดๆ คราบบบ!",
+        imageSuggestion: "รูปคู่ออกแบบกราฟิกเปรียบเทียบ ท่ายืนตัวตรงเด๋อ VS ท่าหันข้างเก๋ไก๋น่ามอง",
+        cta: "เซฟโพสต์ด่วนเพื่อไว้ซ้อมหน้ากระจกน้า หรือจองคิวไว้แล้วช่างภาพพร้อมคุมสอนสเต็ปจริงหน้างานเลยครับ!"
       }
     ]
-  });
+  };
+
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
 });
 
-// 6. Package Builder
-app.post("/api/improve-package", async (req, res) => {
-  const { name, price, hours, photosDelivered, location, inclusions, conditions } = req.body;
-
-  const prompt = getPackageComparisonPrompt(
-    {
-      name: name || "แพ็กเกจถ่ายภาพสุดคุ้ม",
-      price: price || "3500",
-      hours: hours || "4",
-      photosDelivered: photosDelivered || "ไม่จำกัดจำนวนภาพ",
-      inclusions: inclusions || "ปรับแสงสีสวยละมุนทุกใบ",
-      conditions: conditions || "มัดจำ 1,000 บาทล็อกคิว"
+// 5. Post Scoring Engine
+app.post("/api/score-post", async (req, res) => {
+  const { postText, targetGroup, channel, photographerProfile } = req.body;
+  const prompt = getPostScoringPrompt(postText || "", targetGroup || "กลุ่มลูกค้าทั่วไป", photographerProfile?.style || "ธรรมชาติละมุน");
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      score: { type: Type.INTEGER },
+      criteria: {
+        type: Type.OBJECT,
+        properties: {
+          hook: { type: Type.INTEGER },
+          targetRelevance: { type: Type.INTEGER },
+          sellability: { type: Type.INTEGER },
+          credibility: { type: Type.INTEGER },
+          ctaClarity: { type: Type.INTEGER },
+          commentOpportunity: { type: Type.INTEGER },
+          personalFbSuitability: { type: Type.INTEGER }
+        },
+        required: ["hook", "targetRelevance", "sellability", "credibility", "ctaClarity", "commentOpportunity", "personalFbSuitability"]
+      },
+      strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+      improvements: { type: Type.ARRAY, items: { type: Type.STRING } },
+      ctaTips: { type: Type.ARRAY, items: { type: Type.STRING } },
+      upgradedVersion: { type: Type.STRING },
+      psychologyNotes: { type: Type.STRING }
     },
-    {
-      name: "ช่างภาพมืออาชีพ",
-      style: "ธรรมชาติละมุน",
-      jobTypes: [],
-      startingPrice: price || "3500",
-      serviceArea: location || "กรุงเทพฯ",
-      phone: "-",
-      lineId: "-",
-      facebookPage: "-",
-      strengths: "-"
-    }
-  );
+    required: ["score", "criteria", "strengths", "improvements", "ctaTips", "upgradedVersion", "psychologyNotes"]
+  };
 
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              aiEnhancedText: { type: Type.STRING },
-              aiPromoPost: { type: Type.STRING },
-            },
-            required: ["aiEnhancedText", "aiPromoPost"],
-          }
-        }
-      });
+  const fallback = {
+    score: 80,
+    criteria: { hook: 75, targetRelevance: 85, sellability: 78, credibility: 82, ctaClarity: 88, commentOpportunity: 70, personalFbSuitability: 82 },
+    strengths: [
+      "มีการระบุรายละเอียดขอบเขตการทำงาน พื้นที่ พิกัด และราคาชัดเจนสมบูรณ์",
+      "มีอัธยาศัยไมตรีที่ดี มีการแทรกอีโมจิน่ารัก อบอุ่น เป็นกันเอง",
+      "ชูจุดขายเรื่องสไตล์ภาพและสอนจัดท่าโพสได้ชัดเจนดีต่อใจ"
+    ],
+    improvements: [
+      "ประโยคสะดุดตาคำแรกสุดยังจืดชืด 'รับถ่ายภาพ...' ดึงดูดสายตาคนอัปฟีดได้ค่อนข้างยาก",
+      "ขาดเทคนิคการเร่งเร้าจำกัดเวลาโปรโมชันเพื่อเร่งการซื้อ (Scarcity Trigger)",
+      "ขาดการโยนคำถามชวนให้คนกดคอมเมนต์เปิดปฏิสัมพันธ์ปลายเปิด"
+    ],
+    ctaTips: [
+      "เสริมวลี: 'ทักข้อความขอดูตัวอย่างมู้ดพอร์ตเต็มไปประกบตัดสินใจก่อนได้คราบบบ ช่างภาพคุยตลกยินดีต้อนรับสุดๆ'",
+      "แถมสิทธิ์ส่งไฮไลท์ไวในคืนแรกสุดด่วนเร้าใจ"
+    ],
+    upgradedVersion: `📸✨ “โพสไม่เก่ง เขินกล้อง กลัวถ่ายออกมาแล้วตัวเกร็ง... ปลดล็อกความกลัวหมดห่วงทันทีคร้าบ!” 🥰❤️\n\nเปิดจองตารางคิวบริการถ่ายรูปสวยละมุนพาสเทลระดับพรีเมียม สวยเป๊ะพร้อมลงโปรไฟล์ ช่างภาพแสนดีอารมณ์ร่วมสูง สนุกสนาน คอยบิดตัวแนะแนวจัดท่านิ้ว แขน ขาให้ทุกวินาที ชิวแฮปปี้ธรรมชาติ 100% คร้าบผม!\n\n💸 ราคาโปรเริ่มต้นเพียง 3,500.- บาทถ้วน\n⏱️ เวลาเต็มอิ่ม 4 ชั่วโมงจุใจ ถ่ายสนุกไม่มีเร่ง\n⚡ ส่งรูปพรีวิวรวดเร็วทันใจภายใน 24 ชม.\n\n🔒 คุมคุณภาพสูงสุดด้วยการจำกัดโควตาคิวถ่ายเพียง 2 สล็อตต่อสัปดาห์เท่านั้นน้า เพื่อเวลาประณีตแต่งโทนทีละใบคร้าบ\n\n📌 สนใจทักถามวันว่างแชต inbox แฟนเพจมาปรึกษาคอนเซ็ปต์คุยเล่นกันก่อนได้เลยนะคร้าบบบ ช่างภาพรอต้อนรับด้วยความใจดีคร้าบผม! ✉️👇`,
+    psychologyNotes: "วิเคราะห์จิตวิทยาคำโฆษณา: การเปลี่ยนโฉมใหม่เน้นเปิดประโยคละลายปมความกังวลใจด่านแรก ทำให้ผู้ใช้รู้สึกอุ่นใจ เกิดความไว้วางใจ และกระตุ้นต่อมจำกัดโควตาเร่งการสอบถามทันควัน"
+  };
 
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Package Improvement Error:", err);
-    }
-  }
-
-  // Thai Fallback
-  return res.json({
-    aiEnhancedText: `⭐💎 [แพ็กเกจยกระดับระดับ Signature]💎⭐\n👑 ชื่อใหม่แนะนำ: "${name} Elite Cinematic Memory"\n\n💸 ราคาเสนอขายสุดพรีเมียม: ${price}.- บาท (คุ้มค่า คุ้มฝีมือ)\n⏱️ เวลาให้บริการเต็มอิ่ม: ${hours} ชั่วโมงเต็ม (เก็บครบทุกมุม ทุกรอยยิ้ม ไม่เร่งรีบ)\n\n🎁 สิ่งที่คุณจะได้ครอบครอง:\n✨ จำนวนรูปปรับแสงและโทนสีเกรดพรีเมียมเกาหลีแบบ 'ไม่จำกัดจำนวนภาพ' (การันตีคัดสรรรูปที่สวยที่สุดอย่างน้อย ${photosDelivered} รูปขึ้นไป)\n✅ บริการสอนโพสท่าทางตลอดวัน มือใหม่แค่ไหนตัวแบบก็สวยเป็นธรรมชาติไร้เกร็ง\n✅ ได้รับไฟล์รูปพรีวิวรวดเร็วทันใจใน 24 ชั่วโมงแรก!\n✅ ให้คำปรึกษาสไตล์การแต่งกายและมุมโลเคชั่นลับๆ ในโซน ${location || "ทั่วไป"} ฟรี!\n\n📥 คิวจองเดือนนี้จำกัดสัปดาห์ละ 2 ทีมเท่านั้นครับ เพื่อคุณภาพงานแต่งสีที่ดีที่สุด!\n💬 สนใจรีบจองสิทธิ์ล็อกคิว ทักส่งข้อความ Inbox เพจช่างภาพด่วนคราบบบ 👇📱`,
-    aiPromoPost: `✨📸 เปิดตัวแพ็กเกจพรีเมียมตัวใหม่ที่จะพาคุณไปดื่มด่ำกับประสบการณ์ถ่ายภาพสไตล์ฟิลกู้ด ละมุนตา เสมือนนักแสดงนำในซีรีส์เกาหลี\n\n💎 แพ็กเกจสุดฮิต: "${name} Elite Cinematic Memory" 💎\n\n💸 พิเศษสุดในราคาเพียง ${price}.- บาทถ้วน!\n⏱️ จัดเต็มอิ่มเวลาถ่ายรูปจุใจ ${hours} ชั่วโมงเต็มๆ พร้อมทีมงานช่างภาพคอยดูแลอย่างมืออาชีพและเป็นกันเองสูงสุด\n\n✨ สิทธิประโยชน์เหนือใคร:\n✅ การันตีส่งรูปแสงสีแต่งครบไม่อั้น! (คัดสรรสวยที่สุดอย่างน้อย ${photosDelivered} รูปขึ้นไป)\n✅ บริการสอนโพสท่าทางตลอดวัน มือใหม่แค่ไหนตัวแบบก็สวยเป็นธรรมชาติไร้เกร็ง\n✅ ได้รับไฟล์รูปพรีวิวรวดเร็วทันใจใน 24 ชั่วโมงแรก!\n✅ ให้คำปรึกษาสไตล์การแต่งกายและมุมโลเคชั่นลับๆ ในโซน ${location || "ทั่วไป"} ฟรี!\n\n📥 คิวจองเดือนนี้จำกัดสัปดาห์ละ 2 ทีมเท่านั้นครับ เพื่อคุณภาพงานแต่งสีที่ดีที่สุด!\n💬 สนใจรีบจองสิทธิ์ล็อกคิว ทักส่งข้อความ Inbox เพจช่างภาพด่วนคราบบบ 👇📱`
-  });
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
 });
 
-// 11. AI Target Audience Persona Generator
-app.post("/api/generate-personas", async (req, res) => {
-  const { jobType, style, startingPrice, serviceArea, photographerProfile } = req.body;
-
-  const pName = photographerProfile?.name || "ช่างภาพ";
-  const pStyle = style || photographerProfile?.style || "ธรรมชาติ";
-  const pPrice = startingPrice || photographerProfile?.startingPrice || "3,500";
-  const pArea = serviceArea || photographerProfile?.serviceArea || "กรุงเทพฯ";
-
-  const prompt = getPersonaPrompt(jobType, pStyle, pArea, pPrice, pName);
-
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              personas: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    demographics: { type: Type.STRING },
-                    deepDesire: { type: Type.STRING },
-                    mainObjection: { type: Type.STRING },
-                    triggerWords: { type: Type.STRING },
-                    upsellScript: { type: Type.STRING },
-                  },
-                  required: ["name", "demographics", "deepDesire", "mainObjection", "triggerWords", "upsellScript"],
-                }
-              }
-            },
-            required: ["personas"],
-          }
-        }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err) {
-      console.error("Generate Personas Error:", err);
-    }
-  }
-
-  // High-fidelity Thai fallback personas based on inputs
-  const fallbackPersonas = [
-    {
-      name: "น้องมายด์ - บัณฑิตวัยรุ่นสายคอนเทนต์ไอจี (IG Story Creator)",
-      demographics: "เพศหญิง, อายุ 21-23 ปี, นักศึกษาพึ่งจบใหม่ในเขต " + pArea + " ที่ใช้งาน Instagram ตลอดเวลา",
-      deepDesire: "อยากมีเซ็ตภาพถ่ายนอกรอบที่คุมโทนสไตล์ " + pStyle + " ถ่ายทอดความน่ารักสดใสและเป็นธรรมชาติโดยไม่มีตึกหรือองค์ประกอบอื่นรบกวนฉากหลัง อยากได้รูปรีวิวส่งด่วนใน 24 ชั่วโมงแรกเอาไปอัปสปอยเพื่อนร่วมรุ่น",
-      mainObjection: "กลัวช่างภาพดุ อารมณ์เสีย หรือบังคับให้โพสท่าที่ยากๆ แปลกๆ จนอึดอัด กังวลเรื่องการส่งงานช้าข้ามเดือน",
-      triggerWords: "เน้นสอนโพสท่าแบบปล่อยชิล, เป็นกันเองตลกเหมือนมาเที่ยวกับเพื่อน, การันตีส่งรูปแต่งสีไวใน 3 วัน",
-      upsellScript: `สวัสดีครับน้องมายด์ค้าบ 😊 ยินดีแสดงความยินดีกับความสำเร็จล่วงหน้าเลยน้า สำหรับน้องมายด์ที่อยากได้รูปสไตล์ ${pStyle} ละมุนๆ ไปแต่งไอจีสวยๆ พี่แนะเซ็ตโปรเด็ดมินิมอลตัวนี้เลยน้า พี่จะแถมลูกโป่งพาสเทลและเครื่องพ่นฟองสบู่เป็นพร็อพเสริมอารมณ์ความละมุนให้ฟรี และพิเศษสุดๆ พี่ดูแลแต่งเนียนสเปเชียลผิวเนียนลบริ้วรอยจุดด่างดำพร้อมแต่งทรงให้อีก 15 รูปไปเลยครับน้า แถมการันตีส่งไฮไลต์ความทรงจำใน 12 ชั่วโมงแรกทันอัปลง Reels สนุกสนานแน่นอนคราบบบ!`
-    },
-    {
-      name: "คุณกอล์ฟ & คุณอาย - คู่รักหมั้นหมายสร้างอนาคต (Premium Wedding Seekers)",
-      demographics: "คู่รักเพศชาย/หญิง, อายุ 26-32 ปี, พนักงานบริษัทและข้าราชการวัยทำงานที่อยากมีพรีเวดดิ้งคุณภาพสูง",
-      deepDesire: "ต้องการบันทึกแววตา ความใส่ใจ และโมเมนต์โรแมนติกที่อบอุ่นเหนือกาลเวลา ถ่ายทอดด้วยสไตล์ " + pStyle + " เรียบหรูคลาสสิก",
-      mainObjection: "คิดว่าราคาเริ่มต้น " + pPrice + " บาทของเพจเรายังสูงกว่าตลาดย่อยบางเจ้า และกังวลว่าช่างภาพไม่มีกล้องหรือไฟสำรองจนทำให้หากเกิดอุบัติเหตุทางเทคโนโลยีรูปจะสูญหาย",
-      triggerWords: "มีกล้องสำรองและคลังแฟลชพร้อมทุกชุด, จัดแต่งไฟดึงมิติดูแพง, สอนเทคนิคไกด์คู่โพสท่ากอดอุ่นเป็นธรรมชาติ",
-      upsellScript: `ขอแสดงความยินดีในวาระมงคลล่วงหน้าเลยนะครับคุณกอล์ฟคุณอาย 😊📸 สำหรับพิธีแต่งงานสำคัญพรีเมียม พี่ขอเสนอแนะขยับขึ้นมาดูแพ็กเกจ 'Cinematic Grand Full Day' ครับน้า นอกเหนือจากช่างภาพหลัก 2 คนช่วยระดมเก็บทั้งมุมพิธีหมั้นด้านหน้าและมุมสวมแหวนเจาะลึกด้านหลังแล้ว เราพกเซ็ตไฟสตูแฟลชสตูดิโอและกล้องเซนเซอร์สำรองทุกตัว เพื่อป้องกันความเสี่ยง และแต่งผิวรีทัชให้อลังการสะกดใจผู้เข้าร่วมงานแน่นอนครับน้า!`
-    },
-    {
-      name: "พี่นก - เจ้าของร้านขนมหวานสไตล์โมเดิร์น (Cafe & Small Business Owner)",
-      demographics: "เพศหญิง, อายุ 28-42 ปี, เจ้าของร้านอาหารหรือคาเฟ่ในพื้นที่ " + pArea + " ที่ต้องการโฆษณาเชิงพาณิชย์",
-      deepDesire: "ต้องการให้ภาพผลงานถ่ายทอดรายละเอียดสีสันสไตลิ่งดึงเท็กซ์เจอร์ของขนมให้ออกมาฉ่ำชวนกิน ดันยอดไลก์และยอดสั่งอาหาร Lineman ทะยานขึ้น 3 เท่า",
-      mainObjection: "กลัวทีมช่างภาพนำพาอุปกรณ์เกะกะรบกวนลูกค้าที่กำลังนั่งดื่มกาแฟในร้าน หรือกังวลว่าช่างภาพจะจัดพร็อพส่องแสงไม่เป็นศิลปะ",
-      triggerWords: "บริการพกไฟสตูขนาดมินิแต่ทรงพลัง, จัดวางพร็อพอาหารฟรีโดยฟู้ดสไตลิสต์, มอบลิขสิทธิ์ภาพใช้โฆษณาพาณิชย์ตลอดชีพ",
-      upsellScript: `สวัสดีครับพี่นกดีกรีร้านอร่อยของจังหวัดเรา 😊 ช่างภาพยินดีช่วยอัปยอดขายสุดพลังเลยคราบบบ สำหรับขนมปังอบชีสฉ่ำวาวของพี่นก พี่แนะนำแพ็กเกจ 'Commercial Food Premium' ครับน้า เราจะมีสไตลิสต์จัดทิศทางแสงเงาแบบสตูดิโอโมเดิร์นช่วยประดับผลไม้และจานไม้วินเทจให้ภาพดูดึงดูดน่ากิน ดันความหิวพุ่งพรวด และพี่ขอมอบสิทธิ์ลิขสิทธิ์แท้เชิงพาณิชย์ให้พี่นกนำไปขึ้นป้ายใหญ่หรือสื่อสิ่งพิมพ์โปรโมตร้านได้ตลอดชีพอย่างไร้ขอบเขตเลยครับ คุ้มแสนคุ้มแน่นอนคราบบบ!`
-    }
-  ];
-
-  return res.json({ personas: fallbackPersonas });
-});
-
-// 5. AI Chat Reply Assistant
+// 6. Intelligent Chat Lead Handler
 app.post("/api/generate-chat-replies", async (req, res) => {
-  const { name, channel, jobType, budget, date, location, notes, status, photographerProfile } = req.body;
-
+  const { name, jobType, budget, location, notes, status, photographerProfile } = req.body;
   const prompt = getChatReplyPrompt({
     clientName: name || "ลูกค้า",
-    jobType: jobType || "ถ่ายภาพทั่วไป",
-    budget: budget || "ไม่ระบุงบประมาณ",
-    location: location || "ไม่ระบุสถานที่ชัดเจน",
-    status: status || "lead",
-    notes: notes || "ลูกค้าคุยสุภาพ สนใจโทนละมุนอบอุ่น",
-    photographerProfile: photographerProfile || {
-      name: "ช่างภาพมืออาชีพ",
-      serviceArea: "ทั่วไป",
-      startingPrice: "เริ่มต้นราคากันเอง",
-      phone: "-",
-      lineId: "-",
-      style: "ธรรมชาติละมุน",
-      jobTypes: [],
-      packages: []
+    jobType: jobType || "ถ่ายภาพบุคคล",
+    budget: budget || "งบปกติ",
+    location: location || "กรุงเทพฯ",
+    status: status || "ทักใหม่",
+    notes: notes || "",
+    photographerProfile: photographerProfile || { name: "ช่างภาพแสนดี", style: "ธรรมชาติละมุน", startingPrice: "3,500", jobTypes: ["ถ่ายภาพบุคคล"] },
+    lastMessage: "สวัสดีครับ สนใจรายละเอียดราคาและวันว่างครับ"
+  });
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      firstResponse: { type: Type.STRING },
+      sendPackage: { type: Type.STRING },
+      askDetails: { type: Type.STRING },
+      closeSale: { type: Type.STRING },
+      followUp: { type: Type.STRING },
+      confirmBooking: { type: Type.STRING },
+      requestReview: { type: Type.STRING }
     },
-    lastMessage: notes || "สนใจรายละเอียดคิวงานถ่ายภาพสวยๆ ครับ"
-  });
+    required: ["firstResponse", "sendPackage", "askDetails", "closeSale", "followUp", "confirmBooking", "requestReview"]
+  };
 
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              firstResponse: { type: Type.STRING },
-              sendPackage: { type: Type.STRING },
-              askDetails: { type: Type.STRING },
-              closeSale: { type: Type.STRING },
-              followUp: { type: Type.STRING },
-              confirmBooking: { type: Type.STRING },
-              requestReview: { type: Type.STRING },
-            },
-            required: ["firstResponse", "sendPackage", "askDetails", "closeSale", "followUp", "confirmBooking", "requestReview"],
-          }
-        }
-      });
+  const client = name || "ลูกค้า";
+  const job = jobType || "ถ่ายภาพบุคคล";
+  const fallback = {
+    firstResponse: `สวัสดีครับยินดีต้อนรับครับคุณ ${client} 🙏📸✨ ขอบพระคุณมากๆ เลยนะครับที่สนใจมู้ดพอร์ตสไตล์ภาพของเพจผม ยินดีให้คำแนะนำข้อมูลพิกัดคิวว่างเป็นกันเองสูงสุดเลยคร้าบผม สำหรับตารางเวลาถ่ายงาน ${job} ในดวงใจคุณ สามารถบอกเล่าให้ช่างภาพฟังก่อนได้น้าคราบบบ ❤️`,
+    sendPackage: `สำหรับเรทแพ็กเกจพรีเมียมราคาโดนใจสุดคุ้มฝีมือคราบบบคุณ ${client} 💼✨\n\nเพียง 3,500.- บาทถ้วนเท่านั้นครับน้าคราบบบ\n⏱️ ถ่ายภาพจุใจเต็มอิ่ม 4 ชั่วโมง (แต่งแสงสีผิวเนียนคุมโทนพาสเทลละมุนทั้งหมดไม่จำกัดจำนวนใบ)\n🎁 พิเศษสุดๆ แถมสิทธิ์จัดส่งภาพพรีวิวไฮไลท์ไวสะใจใน 24 ชั่วโมงแรกทันทีครับ!\n\nช่างภาพดูแลคอยคุมแนะสอนจัดกอดก้าวหมุนโพสท่าให้ชิวๆ ตลอดเวลา ไม่ต้องหวั่นเกร็งหน้ากล้องเลยครับผม สนใจรับข้อเสนอนี้ทักแชตดีลได้ทันทีคร้าบ 🥰`,
+    askDetails: `เพื่อผลลัพธ์รูปภาพมู้ดสวยวิจิตรและถูกอกถูกใจสูงสุดครับคุณ ${client} 😊📸\n\nช่างภาพแวะถามเพิ่มเติม มีแนวสไตล์ภาพโทนคุมสีเกาหลีแนวไหนที่รักเป็นพิเศษ หรือเล็งสถานที่เสื้อผ้าพร็อพจัดเต็มไว้บ้างแล้วหรือยังน้า? รวมถึงแว๊บแชร์จุดกังวลส่วนตัว เช่น กลัวตาหยี่ หรืออยากเน้นมุมหน้าฝั่งไหนพิเศษ บอกได้เลยนะครับ ช่างภาพจะได้ช่วยบิดมุมสวยเป๊ะสุดฝีมือคราบบบ! 🌸`,
+    closeSale: `สิทธิ์รับของแถมข้อเสนอพิเศษสุดด่วนด่วนครับคุณ ${client}! 🔥⏰\n\nคิวถ่ายคุมโทนสวยสุดสัปดาห์นี้ว่างสล็อต "สุดท้าย สล็อตเดียว" แล้วนะคร้าบ หากมัดจำล็อกรอบวันนี้ ช่างภาพแถมฟรีเพิ่มโควตาสกรีนรูปปริ้นท์โพลารอยด์น่ารักกลับบ้าน 5 ใบไปสะสมความแฮปปี้เลยครับน้า สนใจล็อกสิทธิ์คอนเฟิร์มพิมพ์ตกลงกลับมาได้เลยค้าบผม 📩`,
+    followUp: `แวะมาส่งมิตรภาพและเคาะรอยยิ้มครับคุณ ${client} 😊📸\n\nโควตาแถมสิทธิ์ส่งภาพพรีวิวพรีเมียมพิเศษด่วน 24 ชม. กำลังจะเต็มสิทธิ์รอบสอบถามสัปดาห์นี้น้า เกรงว่าจะพลาดสิทธิ์พิเศษวันถ่ายแสงงามไป หากคุณลูกค้าอยากให้ปรับเวลาหรือมีงบปรับแต่งอย่างไร มาคุยเล่นแชร์ดีลเป็นกันเองสบายกระเป๋ากันก่อนได้เสมอนะครับผม ยินดีต้อนรับมากๆ คราบบบ ❤️`,
+    confirmBooking: `ยินดีดูแลต้อนรับเข้าสู่ช่วงบันทึกความทรงจำแสนสวยงามคร้าบคุณ ${client}! 🎉📸\n\nช่องทางโอนค่ามัดจำล็อกรอบจองสิทธิ์:\n🏦 ธนาคารกสิกรไทย (KBANK)\n💳 เลขที่บัญชี: 123-4-56789-0\n👤 ชื่อบัญชี: นายช่างภาพ แสนดีเป็นมิตร\n\n*ยอดโอนล็อกสิทธิ์เพียง 1,000.- บาท เพื่อล็อกคิวตารางว่างครับ โอนแล้วแชร์ใบสลิปแจ้งช่างภาพได้ทันที ยินดีดูแลสุดหัวใจเลยครับผม! 🙏💖`,
+    requestReview: `ขอบพระคุณจากหัวใจสำหรับวันทริปสุดสนุกสนานตลกเฮฮานะคร้าบคุณ ${client} 🥰\n\nขณะนี้ไฟล์รูปแต่งสีเกรดพาสเทลประณีตเสร็จเสร็จสรรพเรียบร้อยแล้วน้า! หากประทับใจสไตล์ความสุขการดูแลของผม รบกวนกดให้คะแนนหรือแชร์เขียนสั้นรีวิวความประทับใจหน้าแฟนเพจสักนิดนะค้าบ เพื่อกำลังใจทีมงานสร้างรูปสวยต่อไปคราบบบ รักและนับถือเป็นครอบครัวเสมอคร้าบ! ❤️✨`
+  };
 
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err) {
-      console.error("Chat Reply Generation Error:", err);
-    }
-  }
-
-  // Thai Fallback
-  const pName = photographerProfile?.name || "ช่างภาพ";
-  return res.json({
-    firstResponse: `สวัสดีครับคุณ ${name || "ลูกค้า"} ยินดีต้อนรับมากๆ เลยครับ 🙏📸 ผม ${pName} ดีใจมากๆ ที่สนใจงานถ่ายภาพของผมครับ สำหรับงาน ${jobType || "ถ่ายภาพ"} ยินดีให้คำแนะนำปรึกษาฟรีน้า เบื้องต้นคุณ ${name} มีวันที่ตั้งเป้าไว้ หรือชอบโทนอารมณ์แนวไหนบ้างไหมครับ แชตคุยกันชิลๆ ได้เลยนะครับน้า 😊✨`,
-    sendPackage: `สำหรับแพ็กเกจยอดฮิตในการถ่ายภาพ ${jobType || "ถ่ายภาพ"} ของเราจะมีรายละเอียดดังนี้ครับคุณ ${name} 💼✨\n\n📌 แพ็กเกจสุดคุ้มเริ่มต้นที่เพียง ${photographerProfile?.startingPrice || "มิตรภาพ"} บาทเท่านั้นครับ!\n- ได้จำนวนรูปปรับแสงแต่งสีโทนละมุนไม่อั้น\n- ส่งรูปตัวอย่างด่วนภายใน 24 ชม. แรก\n- พร้อมไฟล์ความละเอียดสูง High-Res ทุกรูป ผ่านคลาวด์ดาวน์โหลดง่าย\n- สอนจัดโพสไกด์ท่าทางให้เป็นธรรมชาติ ตลอดทริปไม่เกร็งแน่นอนครับ\n\nเบื้องต้นมีแพ็กเกจตัวนี้ที่ลูกค้าจองเยอะที่สุด สะดวกพิจารณาเป็นตัวนี้หรืออยากปรับเปลี่ยนจำนวนชั่วโมงได้เลยนะครับ ยินดีปรับยืดหยุ่นให้เสมอเลยครับ! ❤️📸`,
-    askDetails: `เพื่อที่ผมจะได้เตรียมไอเดีย วางแผนแสงเงา และเสนอจุดที่ดีที่สุดให้คุณ ${name} รบกวนขอทราบข้อมูลเพิ่มเติมสักนิดนึงนะคร้าบน้า 📸👀\n\n- สถานที่ถ่ายภาพในใจคร่าวๆ (เช่น สตูดิโอ สวนสาธารณะ หรือนอกรอบที่ไหนดีครับ)\n- จำนวนผู้ร่วมถ่ายด้วยในทริปนี้ประมาณกี่คนเอ่ย\n- สไตล์ภาพแนวโทนละมุนอบอุ่น หรือสตรีทเท่ๆ ฟิล์มวินเทจที่ชื่นชอบเป็นพิเศษครับ\n\nยินดีไปช่วยดูแลเต็มที่เลยครับ! ✨`,
-    closeSale: `คุณ ${name} ครับ เบื้องต้นคิวถ่ายวันที่ ${date || "ที่คุณเลือก"} ยังว่างอยู่นะคร้าบ แต่ช่วงนี้คิวเข้าค่อนข้างไวมากเลย 🗓️ด่วน\n\nถ้าคุณ ${name} คอนเฟิร์มจองรอบนี้ ผมยินดีล็อกคิวพิเศษไว้ให้เลย พร้อมสิทธิ์แถมฟรีภาพขนาดพิเศษตกแต่งสวยงามเพิ่มให้อีก 5 รูปสุดพิเศษด้วยครับ!\n\nมาสร้างความทรงจำสวยๆ ไปด้วยกันนะครับน้า สนใจล็อกวันมัดจำจองคิวทักหาผมได้เลยน้าค้าบ ยินดีดูแลคุณ ${name} อย่างดีที่สุดเลยครับ ❤️📸`,
-    followUp: `สวัสดีครับคุณ ${name} ช่างภาพทักมาหาเบาๆ น้า 😊✨ พอดีอยากแวะมาสอบถามเผื่อติดขัดตรงไหน หรือต้องการข้อมูลเกี่ยวกับแพ็กเกจ ${jobType || "ถ่ายภาพ"} เพิ่มเติมแจ้งผมได้เลยนะครับน้า\n\nหากงบประมาณหรือจำนวนชั่วโมงยังไม่ลงตัว ยินดีมาช่วยพูดคุยปรับปรุง ยืดหยุ่นให้เหมาะสมกับคุณ ${name} ได้เลยนะครับ ยินดีให้บริการมากๆ เผื่อคิวช่วงนั้นใกล้เต็ม จะได้ไม่พลาดโอกาสเก็บรูปสวยๆ กันครับคราบบบ 🙏`,
-    confirmBooking: `🎉📸 คอนเฟิร์มการจองคิวสำเร็จครับคุณ ${name}!\n\nได้รับยอดเงินมัดจำเรียบร้อยแล้วนะครับ ล็อกคิวถ่าย ${jobType || "ถ่ายภาพ"} สไตล์โทน ${photographerProfile?.style || "ธรรมชาติ"} ให้เรียบร้อยในตารางงานแล้วคร้าบน้า\n\n📅 วันที่นัดหมาย: ${date || "ตามนัดหมาย"}\n📍 สถานที่: ${location || "ตามตกลง"}\n\n💡 คำแนะนำเบื้องต้น: คืนก่อนวันถ่ายรบกวนคุณ ${name} พักผ่อนให้เต็มอิ่ม ทานน้ำเยอะๆ และเตรียมเสื้อผ้าตามที่เราวางแผนกันไว้ได้เลยครับน้า ระหว่างถ่ายลุยสนุกเต็มที่ ไม่ต้องกังวลเรื่องโพสท่า ผมไกด์ดูแลเต็มที่ตลอดงานครับ!\n\nขอบพระคุณมากๆ ที่ไว้วางใจให้ผมได้เก็บภาพความทรงจำนะครับ แล้วเจอกันวันงานคร้าบ! 😊🙏❤️`,
-    requestReview: `สวัสดีครับคุณ ${name} หวังว่ารูปชุด ${jobType || "ถ่ายภาพ"} ที่ผมเพิ่งส่งมอบไป จะสร้างความสุขและรอยยิ้มให้กับคุณ ${name} และครอบครัวนะคร้าบ 😊📸\n\nหากคุณ ${name} ชื่นชอบในผลงานและการบริการของผม รบกวนกดรีวิวสั้นๆ หรือติชมเพื่อเป็นพลังกำลังใจ และฝากแชร์โพสต์รีวิวรูปสวยๆ ในโซเชียลเพื่อเป็นกำลังใจให้ช่างภาพด้วยนะคร้าบบบ\n\nทุกคอมเมนต์ติชมมีความหมายกับผมมาก ขอบพระคุณมากๆ เลยนะครับน้า ไว้มีโอกาสรอบหน้ายินดีรับใช้และถ่ายรูปใหม่อีกเสมอเลยครับ! 🙏❤️📸`
-  });
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
 });
 
-// 7. Review & Portfolio Caption Generator
-app.post("/api/generate-captions", async (req, res) => {
-  const { customerName, jobType, location, toneStyle, notes } = req.body;
-
-  const prompt = getCaptionGeneratorPrompt(
-    jobType || "ถ่ายรูปบุคคล/โปรไฟล์",
-    notes || "ลูกค้าโพสท่าไม่ค่อยเป็น ช่างภาพเลยชวนเล่นสนุกๆ ตลกๆ จนได้รูปยิ้มธรรมชาติมากๆ",
-    toneStyle || "ฟิล์มเกาหลี สว่าง ละมุน ธรรมชาติ",
-    `พิกัด: ${location || "คาเฟ่ยอดฮิต"} | ลูกค้าชื่อ: ${customerName || "ลูกค้าแสนดี"}`
-  );
-
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              reviewCaption: { type: Type.STRING },
-              thankYouMessage: { type: Type.STRING },
-              requestReview: { type: Type.STRING },
-              portfolioCaption: { type: Type.STRING },
-              albumCaption: { type: Type.STRING },
-              singlePhotoCaption: { type: Type.STRING },
-              beforeAfterCaption: { type: Type.STRING },
-            },
-            required: ["reviewCaption", "thankYouMessage", "requestReview", "portfolioCaption", "albumCaption", "singlePhotoCaption", "beforeAfterCaption"],
-          }
-        }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Caption Generation Error:", err);
-    }
-  }
-
-  // Thai Fallback
-  return res.json({
-    reviewCaption: `📸✨ “รอยยิ้มที่จริงใจที่สุด คือรอยยิ้มที่ไม่ต้องปรุงแต่ง...”\n\nวันนี้มีโอกาสไปเก็บภาพงาน ${jobType || "ถ่ายภาพ บุคคล"} ให้กับคุณ ${customerName || "ลูกค้า"} ในพิกัด ${location || "คาเฟ่ลับ"} ขอบอกว่าเป็นคิวงานที่หัวเราะกันเกือบตลอดทริปเลยคร้าบ 😆 น้องบอกโพสท่าไม่เก่ง เกร็งง่าย แต่พอบอกสูตรให้เล่นตลกๆ ผลลัพธ์ที่ได้ออกมาคือธรรมชาติ อบอุ่น แฟลตแสงสีโทน ${toneStyle || "ละมุนธรรมชาติ"} สุดจึ้งงง!\n\nขอบพระคุณคุณ ${customerName || "ลูกค้า"} มากๆ เลยนะครับที่ให้ใจและเหนื่อยสู้กล้องไปด้วยกัน แวะชมความน่ารักกันเต็มๆ ได้เลยน้าค้าบ ❤️✨ #ช่างภาพ #สไตล์${toneStyle || "ธรรมชาติ"}`,
-    thankYouMessage: `ขอบพระคุณคุณ ${customerName || "ลูกค้า"} สำหรับทริปถ่ายภาพ ${jobType || "ถ่ายภาพ"} วันนี้มากๆ เลยนะคร้าบน้า 🙏✨ สนุกเป็นกันเองมากๆ เลย ตัวแบบตั้งใจและน่ารักสุดๆ เดี๋ยวด่วนส่งพรีวิวภาพไฮไลท์สวยๆ ไปให้ชมภายในคืนนี้เลยนะครับ ส่วนรูปเซ็ตเต็มจะรีบขัดเกลาแต่งแสงสีสไตล์โทนละมุนให้อย่างไวที่สุดเลยครับ ได้เหนื่อยพักผ่อนมากๆ นะครับ แล้วพบกันใหม่ครับคราบบบ 🥰📸`,
-    requestReview: `คุณ ${customerName || "ลูกค้า"} ครับน้า ช่างภาพแวะมาส่งความสุขเบาๆ นะคร้าบ 😊 หากได้รับไฟล์รูปครบเรียบร้อยแล้ว ถูกอกถูกใจสไตล์ภาพและการทำงานของผม รบกวนเวลาสัก 1 นาทีกดรีวิวเป็นกำลังใจ หรือแชร์ภาพสวยๆ แท็กมาหาเพจช่างภาพด้วยน้าค้าบ ยินดีรับฟังคำติชมเพื่อเอาไปพัฒนาฝีมือให้ดียิ่งขึ้นคราบบบ ขอบคุณมากๆ เลยนะคร้าบผม! ❤️✨`,
-    portfolioCaption: `🎞️📸 [Visual Portfolio Style] 📸🎞️\n\n“The camera is an instrument that teaches people how to see without a camera.”\n\nความงดงามของการจัดวางสายตา แสงธรรมชาติยามเย็น และสไตล์ภาพโทน ${toneStyle || "ฟิล์มเกาหลีอบอุ่น"} ที่ตั้งใจสร้างสรรค์อย่างประณีตสำหรับสัปดาห์นี้ ทักทายสอบถามคิวถ่ายภาพได้เสมอครับน้า ✨`,
-    albumCaption: `🎞️✨ [Full Story Showcase Album] 📸✨\n\nปักหมุดความน่ารักเต็มสิบไม่หัก! อัลบั้มเต็มรวมเซ็ตภาพถ่าย ${jobType || "บุคคล"} ณ พิกัด ${location || "สตูดิโอเก๋ๆ"} คุมโทนอุ่นใจด้วยโทนสีสไตล์ ${toneStyle || "ธรรมชาติละมุน"} ทุกรูปบอกเล่าสตอรี่ความประทับใจและความเป็นตัวเองได้อย่างชัดเจน\n\nชมภาพทั้งหมดและจับจองคิวว่างของคุณได้ที่แชตเพจเลยนะครับน้า พร้อมไกด์ท่าทางตลอดทริปเหมือนเคย 😊👇`,
-    singlePhotoCaption: `✨📸 “The Masterpiece Moment” 📸✨\n\nวินาทีที่แสงตกกระทบหน้าเลนส์และจังหวะรอยยิ้มธรรมชาติของตัวแบบส่องสว่างที่สุด โทนสีและองค์ประกอบแบบพรีเมียม สไตล์รูปที่ใช่ในแบบที่เป็นตัวเอง จองทริปทัก inbox เลยครับ! 🔥`,
-    beforeAfterCaption: `🎨🎞️ [The Power of Retouching & Color Grading] 🎞️🎨\n\nพามาดูความแตกต่างระหว่างไฟล์ RAW ดิบ และไฟล์ภาพที่แต่งเสร็จสมบูรณ์สไตล์โทน ${toneStyle || "พรีเมียมเกาหลี"}\n\nเราใส่ใจแต่งรูปภาพให้อย่างพิถีพิถัน ดึงความสดใส แก้ไขโทนสีเพื่อชูโมเมนต์สำคัญให้ทรงเสน่ห์ที่สุด เพราะเราเชื่อว่าทุกรูปถ่ายคือทรัพย์สินแห่งความทรงจำที่มีค่าของคุณครับ 💖📸`
-  });
-});
-
-// 8. Package Comparison & Upsell Builder
-app.post("/api/compare-packages", async (req, res) => {
-  const { packages, photographerProfile } = req.body;
-
-  if (!packages || !Array.isArray(packages) || packages.length < 2) {
-    return res.status(400).json({ error: "โปรดเลือกแพ็กเกจอย่างน้อย 2 แพ็กเกจเพื่อเปรียบเทียบ" });
-  }
-
-  const pName = photographerProfile?.name || "ช่างภาพ";
-  const pStyle = photographerProfile?.style || "ธรรมชาติ";
-
-  const prompt = `กรุณาวิเคราะห์และเปรียบเทียบแพ็กเกจบริการถ่ายภาพต่อไปนี้เพื่อช่วยช่างภาพปิดการขายและจูงใจลูกค้าให้อัปเกรดเป็นแพ็กเกจที่แพงกว่า (Upsell) ด้วยหลักจิตวิทยาการบริการและการนำเสนอคุณค่าอารมณ์:
-ข้อมูลช่างภาพ:
-- ชื่อร้าน/แบรนด์: ${pName}
-- สไตล์งาน: ${pStyle}
-
-รายชื่อแพ็กเกจที่ต้องการเปรียบเทียบ:
-${packages.map((p, idx) => `แพ็กเกจที่ ${idx + 1}:
-- ชื่อ: ${p.name}
-- ราคา: ${p.price} บาท
-- เวลาให้บริการ: ${p.hours} ชั่วโมง
-- ส่งมอบภาพ: ${p.photosDelivered || "ไม่ระบุ"}
-- สถานที่: ${p.location || "ไม่ระบุ"}
-- สิ่งที่รวม: ${p.inclusions || "ไม่ระบุ"}`).join("\n\n")}
-
-กรุณาส่งกลับเป็น JSON ตาม Schema ดังนี้:
-1. comparisonGrid: รายการสิ่งอำนวยความสะดวกและความพิเศษที่แตกต่างอย่างเห็นได้ชัดระหว่างแต่ละแพ็กเกจ (อาทิ ปรับแสงสี, ถ่ายช่วงแสงเย็น Golden Hour, ความรีบเร่ง/ความเหนื่อย, จำนวนรูปภาพที่ปรับโทนเพิ่มขึ้น) เพื่อช่วยลูกค้าพิจารณาได้ง่าย (ส่งเป็น array ของสายอักขระ 3-5 ข้อ)
-2. valueProposition: คำอธิบายคุณประโยชน์และเหตุผลทางจิตวิทยาเชิงอารมณ์ว่าทำไมลูกค้าถึงคุ้มค่าที่สุดหากขยับมาใช้แพ็กเกจที่พรีเมียมกว่า (Emotion & Value-based explanation)
-3. upsellScript: ข้อความบทพูด/บทพิมพ์ปิดแชตปิดการขาย (Upsell Chat Script) สำหรับส่งให้ลูกค้าที่สนใจแพ็กเกจราคาเริ่มต้น เพื่อจูงใจสลายความกังวลและแนะนำให้อัปเกรดอย่างนุ่มนวล เป็นมิตร และดูสุภาพช่วยเหลือเต็มที่
-4. objectionResponses: ประโยคสั้นๆ ตอบประเด็นคำถามว่า 'ทำไมราคาของสองแพ็กเกจนี้ถึงต่างกันเยอะคะ' เพื่อชี้แจงความคุ้มค่าระดับพรีเมียม`;
-
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              comparisonGrid: { type: Type.ARRAY, items: { type: Type.STRING } },
-              valueProposition: { type: Type.STRING },
-              upsellScript: { type: Type.STRING },
-              objectionResponses: { type: Type.STRING },
-            },
-            required: ["comparisonGrid", "valueProposition", "upsellScript", "objectionResponses"],
-          }
-        }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Compare Packages Error:", err);
-    }
-  }
-
-  // Thai Fallback
-  const pkg1 = packages[0];
-  const pkg2 = packages[1];
-  return res.json({
-    comparisonGrid: [
-      `⏰ เวลาถ่ายภาพจุใจเพิ่มขึ้น: แพ็กเกจ "${pkg2.name}" ให้ชั่วโมงถ่ายยาวนานกว่า ช่วยให้ไม่เร่งรีบ มีเวลาเปลี่ยนชุดและหามุมแสงสวยๆ มากขึ้น`,
-      `🎨 จำนวนรูปที่คัดสรรและแต่งสีพรีเมียมแบบจัดเต็มมากกว่า ส่งมอบผลงานที่ประณีตกว่าอย่างเห็นได้ชัด`,
-      `✨ ได้รับของแถมและการดูแลพิเศษ เช่น ส่งรูปไฮไลท์พรีวิวไวภายใน 24 ชม. และคำไกด์มุมกล้องพิเศษเฉพาะบุคคล`
-    ],
-    valueProposition: `การเลือกระดับบริการที่ขยับขึ้นมาอีกนิด จะช่วยให้คุณได้รับโมเมนต์ความอบอุ่นที่สมบูรณ์แบบที่สุด ไม่ต้องกังวลเรื่องเวลาที่จำกัดจนเกินไป ช่างภาพสามารถเก็บบรรยากาศแบบเผลอๆ ธรรมชาติ และช่วงแสงสวยของวัน (Golden Hour) ได้ครบถ้วน ซึ่งเป็นคุณค่าทางความทรงจำที่จะคงอยู่ตลอดไป`,
-    upsellScript: `ยินดีต้อนรับครับคุณลูกค้า 😊📸 สำหรับแพ็กเกจเริ่มต้น "${pkg1.name}" ราคา ${pkg1.price}.- นั้นดีมากๆ เลยครับ แต่ถ้าอยากได้รูปคุมโทนที่สวยสมบูรณ์แบบรอบด้านจริงๆ ช่างภาพขอแนะนำแพ็กเกจซิกเนเจอร์ยอดฮิตตัวนี้เลยครับน้า คือ "${pkg2.name}" ราคาเพียง ${pkg2.price}.- เท่านั้นครับ!\n\nสิ่งที่เพิ่มขึ้นมาบอกเลยว่าคุ้มฝีมือมากๆ ครับน้า:\n✅ ได้เวลาถ่ายเพิ่มขึ้นเต็มอิ่ม ทำให้เรามีจังหวะถ่ายสบายๆ ไม่เหนื่อยเกร็ง ช่างภาพหามุมบิดหามุมสวยได้เต็มที่\n✅ คัดสรรแต่งแสงสีโทนเกาหลีละมุนให้แบบพิเศษเพิ่มขึ้นจุใจ\n✅ การันตีส่งภาพรีวิวพอร์ตโฟลิโอตัวอย่างไวที่สุดใน 24 ชม. เพื่อเอาไปลงอวดเพื่อนได้ทันทีเลยครับ\n\nจ่ายเพิ่มอีกเพียงนิดเดียวแต่ได้รับความสบายใจและความทรงจำที่สมบูรณ์แบบที่สุดเลยครับน้า สะดวกพิจารณาเป็นตัวนี้เพื่อล็อกสิทธิ์คิวถ่ายช่วงเวลาแสงสวยๆ ไว้เลยดีไหมครับผม? 🥰👇`,
-    objectionResponses: `“สาเหตุที่แพ็กเกจ "${pkg2.name}" มีความคุ้มค่าสูงกว่าเนื่องจากช่างภาพได้เพิ่มเวลาให้บริการอย่างประณีต มีกระบวนการขัดเกลาภาพปรับสีแบบจุใจเพิ่มขึ้นเท่าตัว พร้อมรับประกันสิทธิพิเศษบริการส่งงานไฮไลต์ไวเพื่อลงสตอรี่ได้ทันทีหน้างาน ซึ่งเหมาะมากสำหรับลูกค้าที่ต้องการความประณีตสูงสุดและอยากได้รูปภาพโมเมนต์ที่ละเอียดอ่อนเก็บไว้ตลอดไปครับน้า”`
-  });
-});
-
-// 9. AI Objection Handling Generator
+// 7. Objection Handling Master
 app.post("/api/handle-objection", async (req, res) => {
   const { objectionType, clientName, jobType, price, photographerProfile } = req.body;
-
-  const pName = photographerProfile?.name || "ช่างภาพ";
-  const pStyle = photographerProfile?.style || "ธรรมชาติ";
-
   const prompt = getObjectionHandlingPrompt(
     clientName || "ลูกค้า",
-    jobType || "ถ่ายภาพ",
-    price || "ราคาทั่วไป",
-    pStyle,
+    jobType || "ถ่ายภาพบุคคล",
+    price || "3,500",
+    photographerProfile?.style || "ธรรมชาติอบอุ่น",
     objectionType || "expensive"
   );
 
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              empathicGreeting: { type: Type.STRING },
-              coreExplanation: { type: Type.STRING },
-              valueCompensation: { type: Type.STRING },
-              callToAction: { type: Type.STRING },
-              fullReplyMessage: { type: Type.STRING },
-            },
-            required: ["empathicGreeting", "coreExplanation", "valueCompensation", "callToAction", "fullReplyMessage"],
-          }
-        }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Handle Objection Error:", err);
-    }
-  }
-
-  // Thai Fallbacks based on objectionType
-  let fallback = {
-    empathicGreeting: "",
-    coreExplanation: "",
-    valueCompensation: "",
-    callToAction: "",
-    fullReplyMessage: ""
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      empathyAndGreeting: { type: Type.STRING },
+      boundaryExplanation: { type: Type.STRING },
+      valueOffer: { type: Type.STRING },
+      cta: { type: Type.STRING },
+      fullReplyMessage: { type: Type.STRING }
+    },
+    required: ["empathyAndGreeting", "boundaryExplanation", "valueOffer", "cta", "fullReplyMessage"]
   };
 
+  const client = clientName || "ลูกค้า";
+  const rate = price || "เรทมาตรฐาน";
+
+  // Detailed custom fallbacks per objection type
+  let empathyAndGreeting = `สวัสดีครับคุณ ${client} ช่างภาพยินดีไขข้อข้อกังวลและตอบถามด้วยความเป็นมิตรรู้สึกอบอุ่นใจที่สุดเลยนะครับน้า 😊`;
+  let boundaryExplanation = `อัตราค่าจ้างเริ่มต้น ${rate} บาท เป็นเรทที่สะสมความใส่ใจประณีตสุดพลัง ตั้งแต่เวลาดูแล คุมจัดสอนจัดท่าเผลอ ตลอดจนการนั่งไล่ปรับเกรดแต่งสกินโทนแสงพาสเทลทีละรูปจนหน้าผ่องเนียนสวยสมจริง ไม่ออโต้ คุ้มค่าทางจิตใจเวลากลับมาย้อนดูภาพความทรงจำตลอดช่วง 10 ปีแน่นอนครับ`;
+  let valueOffer = `พิเศษสำหรับคุณ ${client} ที่ถูกชะตาไอเดียมู้ดรูปผม ช่างภาพขอมอบของแถมสิทธิ์ส่งภาพพรีวิวตัวพรีวิวเซ็ตใหญ่ด่วนจี๋คืนแรกสุดฟิน เพื่อไปลงโชว์ฉลองความสุขก่อนใครเลยครับคราบบบ`;
+  let cta = `คุณลูกค้าแวะสอบถามรอบคิวถ่ายช่วงแสงสวยเสาร์อาทิตย์นี้เพิ่มเติมคุยเล่นสบายๆ กันก่อนได้ตลอดเวลาเลยคร้าบผม 👇💖`;
+
   if (objectionType === "expensive") {
-    fallback = {
-      empathicGreeting: `เข้าใจและขอบคุณสำหรับฟีดแบ็กเรื่องงบประมาณมากๆ เลยครับคุณ ${clientName || "ลูกค้า"} การตัดสินใจเรื่องค่าใช้จ่ายของวันสำคัญเป็นสิ่งที่เราใส่ใจมากๆ ครับ`,
-      coreExplanation: `ที่อัตราบริการราคา ${price || "นี้"} ช่างภาพอยากเรียนชี้แจงด้วยความจริงใจน้าว่า เราดูแลตั้งแต่การคัดสรรสถานที่ การจัดทิศทางแสงเงาเฉพาะตัว และการปรับแสงสีแต่งรูปอย่างพิถีพิถันทุกชิ้นงาน เพื่อให้แน่ใจว่าคุณ ${clientName || "ลูกค้า"} จะได้เซ็ตภาพแห่งความสุขที่ดูละมุน สะท้อนตัวตนเป็นธรรมชาติ และกลับมามองดูได้กี่ครั้งก็มีรอยยิ้มอุ่นใจตลอดไปครับ`,
-      valueCompensation: `เพื่อช่วยเหลือเรื่องความคุ้มค่าสูงสุด หากจองมัดจำล็อกสิทธิ์รอบนี้ ช่างภาพยินดีแถมภาพแต่งแสงสีพิเศษสำหรับนำไปอัดกรอบเพิ่มให้อีก 5 ภาพฟรีทันทีเลยคราบบบ`,
-      callToAction: `เบื้องต้นสนใจรับสิทธิ์ของแถมพิเศษนี้ไปล็อกคิวตารางว่างในสัปดาห์นี้ไว้ก่อนดีไหมครับน้า? 😊👇`,
-      fullReplyMessage: `เข้าใจและขอบคุณสำหรับฟีดแบ็กเรื่องงบประมาณมากๆ เลยครับคุณ ${clientName || "ลูกค้า"} ยินดีและใส่ใจเป็นที่สุดเลยครับน้า 😊\n\nสำหรับอัตราบริการราคา ${price || "เริ่มต้น"} ช่างภาพอยากเรียนชี้แจงด้วยความจริงใจเลยครับว่า งานบริการนี้ครอบคลุมความละเอียดอ่อนและความประณีตสูงสุดคราบบบ:\n✔️ ช่างภาพคอยช่วยจัดเตรียมสอนไกด์ท่าทางเผลอละมุนตลอดงาน ไม่ต้องกังวลเรื่องเกร็งหน้ากล้องเลยครับ\n✔️ ขั้นตอนการปรับแต่งดึงสีและแสงอารมณ์สไตล์คุมโทน ${pStyle} ที่ใส่ใจทุกความคมชัด\n✔️ การส่งรูปที่รวดเร็ว มั่นใจได้ว่าได้รับความทรงจำที่คุ้มค่าไม่ตกหล่น\n\nเพื่อช่วยเหลือและทดแทนเรื่องความคุ้มค่ารอบนี้ ช่างภาพยินดีมอบสิทธิประโยชน์แถมฟรีภาพปรับสีเพิ่มพิเศษ 5 ใบสำหรับอัดทำพอร์ตขนาดพรีเมียมให้ฟรีเลยครับน้าคราบบบ!\n\nเบื้องต้นสะดวกรับโควต้าของแถมนี้เพื่อล็อกวันดีๆ สัปดาห์นี้ไว้เลยดีไหมครับผม? ยินดีดูแลคุณ ${clientName || "ลูกค้า"} สุดฝีมือเลยครับ ❤️📸`
-    };
+    empathyAndGreeting = `สวัสดีครับคุณ ${client} ช่างภาพเข้าใจเรื่องการจัดสรรงบประมาณความประหยัดใจมากๆ เลยน้าค้าบ ขอบคุณมากๆ ที่สนใจและสอบถามเข้ามาอย่างเปิดเผยแบบคนกันเองคราบบบ 😊`;
+    boundaryExplanation = `สำหรับเรทราคา ${rate} บาทนี้ ช่างภาพเน้นความละเมียดละไมสูงสุดประณีตมากครับน้า เรามีบริการคอยช่วยไกด์บิวท์รอยยิ้มอารมณ์ คลายเกร็ง ช่วยดีไซน์มุมเป๊ะให้ และกระบวนการขัดเกลาภาพปรับหน้าใสสว่างนุ่มนวลทีละใบด้วยความรัก ไม่ใช่งานกดรัวสอยเทมเพลต เพื่อความประทับใจพรีเมียมลิมิเต็ดแท้จริงครับ`;
+    valueOffer = `แต่เพราะถูกมู้ดเคสคุณมากๆ ช่างภาพยินดีแถมสิทธิ์พรีวิวด่วนพิเศษเซ็ตแรกสุดชิคให้รับชมพิจารณาคืนวันถ่ายทันควัน เพื่อเอาไปอัปสตอรี่ได้ก่อนหมดสิทธิ์โปรเลยค้าบผม`;
   } else if (objectionType === "raw_files") {
-    fallback = {
-      empathicGreeting: `เข้าใจความต้องการที่อยากได้รูปถ่ายครบถ้วนเก็บไว้มากๆ เลยครับคุณ ${clientName || "ลูกค้า"} สำหรับช่างภาพแล้ว ทุกจังหวะกดชัดเตอร์สำคัญจริงครับ`,
-      coreExplanation: `ช่างภาพขอเรียนชี้แจงอย่างเป็นกันเองและจริงใจน้าว่า ไฟล์รูปดิบ (RAW) จะยังเปรียบเสมือนอาหารดิบที่ยังไม่ได้ผ่านการปรุงแต่งครับ มาตรฐานของร้านช่างภาพมืออาชีพจึงเน้นการปรุงสุกอย่างละเอียดอ่อน คือการคัดกรองจัดโทนแสงสีสไตล์ละมุนอุ่นใจให้เสร็จสมบูรณ์ร้อยเปอร์เซ็นต์ เพื่อเป็นการรักษาคุณภาพและชื่อเสียงของแบรนด์ รวมถึงมอบไฟล์ที่พร้อมแชร์ลงโซเชียลได้สวยเป๊ะสะกดสายตาที่สุดให้คุณ ${clientName || "ลูกค้า"} ครับ`,
-      valueCompensation: `แต่หากคุณ ${clientName || "ลูกค้า"} มีความจำเป็นต้องการใช้นำไปใช้งานเพิ่ม ช่างภาพยินดีมอบสิทธิ์เปิดคลังรูปคัดเลือกปรับเพิ่มรูปที่ชอบให้อีก 20 รูปเป็นกรณีพิเศษเลยครับคราบบบ`,
-      callToAction: `สะดวกดีลตัวนี้เพื่อยืนยันคิวพิเศษช่วงสุดสัปดาห์นี้ไว้เลยดีไหมครับน้า? 🥰👇`,
-      fullReplyMessage: `เข้าใจความต้องการที่อยากเก็บทุกๆ มุมไว้ดูเล่นมากๆ เลยครับคุณ ${clientName || "ลูกค้า"} 😊📸\n\nแต่ช่างภาพขออธิบายด้วยความจริงใจและถ่อมตนเลยน้าว่า สำหรับไฟล์ดิบ (RAW) นั้นเปรียบเสมือนเมนูอาหารที่ยังไม่ได้ปรุงสุกครับ ทางเพจเราต้องการส่งมอบสิ่งที่ดีที่สุดและสมบูรณ์แบบที่สุดที่ปรับโทน คุมสไตล์แสงเงาละมุน ${pStyle} เรียบร้อยแล้วเท่านั้น เพื่อให้สมกับที่คุณ ${clientName || "ลูกค้า"} มอบความไว้วางใจให้ช่างภาพดูแลความทรงจำสำคัญครั้งนี้ครับ ✨\n\nแต่เพื่อความประทับใจของทุกคน ช่างภาพยินดีปรับเพิ่มจำนวนรูปคัดสรรแต่งแสงสีให้เพิ่มอีก 20 รูปเต็มๆ รวมในแพ็กเกจเดิมไปเลยคราบบบ เพื่อให้ได้ครบทุกมุมน่าเอ็นดูแน่นอนครับ!\n\nรับรองว่าเปิดดูรูปสุกหอมละมุนพร้อมส่งลงเฟสแล้วจะแฮปปี้สุดใจแน่นอนครับน้า สนใจรับข้อเสนอเพิ่มรูปพิเศษเพื่อล็อกคิววันนี้เลยดีไหมครับน้า? ❤️👇`
-    };
-  } else {
-    fallback = {
-      empathicGreeting: `เข้าใจในสถานการณ์ความจำเป็นกะทันหันของคุณ ${clientName || "ลูกค้า"} มากๆ เลยครับ เรื่องดินฟ้าอากาศหรือเหตุจำเป็นย่อมเกิดขึ้นได้ครับ`,
-      coreExplanation: `เนื่องจากตารางงานคิวถ่ายของช่างภาพค่อนข้างจำกัดและมีการล็อกวันล่วงหน้าเพื่อเตรียมพร้อมอุปกรณ์และค่าเสียโอกาสสำหรับทีมงาน อย่างไรก็ตามช่างภาพยินดีบริการดูแลช่วยประนีประนอมตามเงื่อนไขยืดหยุ่นเป็นกันเองสุดฝีมือครับ`,
-      valueCompensation: `ทางเพจเราขอมอบเงื่อนไขให้คุณ ${clientName || "ลูกค้า"} สามารถเลื่อนสิทธิ์จองคิวฟรี 1 ครั้งภายในระยะเวลา 6 เดือน โดยใช้ยอดมัดจำเดิมได้ทั้งหมดเพื่อความสบายใจสูงสุดครับน้า`,
-      callToAction: `เบื้องต้นสะดวกมองหาวันคิวว่างวันใหม่ในช่วงเดือนหน้าร่วมกันเลยดีไหมครับผม? ยินดีประสานงานคิวว่างให้ทันทีเลยครับคราบบบ 🙏`,
-      fullReplyMessage: `สวัสดีครับคุณ ${clientName || "ลูกค้า"} เข้าใจและเห็นใจในสถานการณ์เหตุจำเป็นกะทันหันรอบนี้มากๆ เลยครับน้า สบายใจได้ครับเราคุยกันเป็นกันเองได้เสมอ 😊📸\n\nเนื่องจากการจองวันถ่ายช่างภาพจะมีการล็อกคิวปิดตารางเพื่อเตรียมความพร้อมร้อยเปอร์เซ็นต์ อย่างไรก็ดีเพื่อดูแลลูกค้าคนสำคัญ ช่างภาพยินดีเสนอทางออกอะลุ่มอล่วยยืดหยุ่นให้สูงสุดดังนี้ครับ:\n✔️ ยินดีให้เลื่อนสิทธิ์คิวจองไปใช้วันใหม่ได้ฟรี 1 ครั้ง ภายในระยะเวลา 6 เดือนเต็มล่วงหน้า\n✔️ สามารถรักษายอดเงินจองมัดจำเดิมไว้หักลบได้เต็มจำนวน ไม่ริบยอดจองแน่นอนครับเพื่อความอุ่นใจ\n\nช่างภาพอยากให้คุณ ${clientName || "ลูกค้า"} สบายใจและแฮปปี้ที่สุดครับ เบื้องต้นเราแวะมาดูตารางคิวว่างรอบถัดไปในช่วงสัปดาห์หน้าหรือเดือนหน้าด้วยกันก่อนดีไหมครับน้า? ทักแชทล็อกวันใหม่คุยสบายๆ ได้เลยคราบบบ 🙏❤️`
-    };
+    empathyAndGreeting = `สวัสดีครับคุณ ${client} ยินดีอธิบายเรื่องนโยบายการดูแลความประณีตพอร์ตงานไฟล์ภาพดิบ (RAW) ด้วยความรักและเป็นมิตรสไตล์ช่างภาพคราบบบผม 😊`;
+    boundaryExplanation = `ปกติไฟล์ดิบ RAW จะเป็นขนาดจักษุเทคโนโลยีสีเทาๆ ซีดๆ ที่ต้องการการรังสรรค์แสงและเกรดผิวเนียนประณีตให้ผุดผ่องสวยเสร็จสมบูรณ์ เปรียบสเปกวัตถุดิบอาหารที่ปรุงแต่งเสร็จสรรพให้อร่อยเหาะน่ามองที่สุดแบรนด์ช่างภาพเน้นจัดส่งผลงานคัดเฉพาะรูปที่แต่งสวยเป๊ะ 100% เพื่อรักษาความพรีเมียมหรูหราให้พอร์ตลูกค้ามั่นใจสูงสุดครับ`;
+    valueOffer = `แต่หากคุณลูกค้าอยากได้รูปโมเมนต์เผลอตลกๆ เก็บสะสม ช่างภาพยินดีจัดคัดไฟล์คุมแสงสีเบื้องต้น JPEG สวยงามคัดแถมเพิ่มให้อีก 50 รูปจุใจกันเลยคราบบบน้า ดีต่อใจสุดๆ แน่นอนครับ`;
+  } else if (objectionType === "weather") {
+    empathyAndGreeting = `สวัสดีครับคุณ ${client} เรื่องฟ้าฝน สภาพฝนตกแดดแผดเผาเป็นเรื่องกังวลลึกๆ ของทุกคนเลยคราบบบ สบายใจหายห่วงได้เลยน้า ช่างภาพมีนโยบายรับมือให้ปลอดภัยแฮปปี้ที่สุดครับ 😊🌨️`;
+    boundaryExplanation = `หากวันจองถ่ายจริงเกิดกรณีมรสุมฝนตกกระหน่ำพายุฟ้าปิดจริงๆ ช่างภาพมีมาตรฐานดูแลความปลอดภัยและสบายใจ โดยให้คุณลูกค้าเลือกเลื่อนขยับตารางวันถ่ายภาพออกไปได้ฟรี 1 ครั้งแบบไม่มีหักค่าธรรมเนียมใดๆ เพื่อมู้ดรอยยิ้มสดใสที่ดีที่สุดคร้าบ`;
+    valueOffer = `แถมช่างภาพเตรียมพร็อพร่มญี่ปุ่นใสพรีเมียมไว้คู่ใจด้วยน้า เผลอๆ รูปเผลอเดินจับร่มกลางแสงปรอยสะท้อนมิตินุ่มๆ จะออกมาน่ารักสดใสอุ่นใจเหมือนหลุดมาในซีรีส์โรแมนติกชั้นเลิศเลยคร้าบผม!`;
   }
 
-  return res.json(fallback);
-});
+  const fullReplyMessage = `${empathyAndGreeting}\n\n${boundaryExplanation}\n\n${valueOffer}\n\n${cta}`;
+  const fallbackResponse = { empathyAndGreeting, boundaryExplanation, valueOffer, cta, fullReplyMessage };
 
-// 10. AI Content Repurposing Tool
-app.post("/api/repurpose-post", async (req, res) => {
-  const { originalPost, targetChannel, photographerProfile } = req.body;
-
-  if (!originalPost) {
-    return res.status(400).json({ error: "โปรดระบุเนื้อหาคอนเทนต์ต้นฉบับเพื่อแปลงรูปแบบ" });
-  }
-
-  const pName = photographerProfile?.name || "ช่างภาพ";
-  const pStyle = photographerProfile?.style || "ธรรมชาติ";
-
-  const prompt = getRepurposingPrompt(originalPost, targetChannel, pName, pStyle);
-
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              repurposedContent: { type: Type.STRING },
-              hookStrategy: { type: Type.STRING },
-              formattingTips: { type: Type.STRING },
-            },
-            required: ["repurposedContent", "hookStrategy", "formattingTips"],
-          }
-        }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Repurpose Post Error:", err);
-    }
-  }
-
-  // Thai Fallback
-  let rep = "";
-  let hook = "";
-  let tips = "";
-
-  if (targetChannel.includes("Reels")) {
-    rep = `🎬✨ [Reels Video Script: เบื้องหลังสร้างความสุข] ✨🎬\n\n📌 [On-Screen Text ดึงดูด]: "ความจริงเบื้องหลังภาพสวยลอยฟ้า.. สำหรับคนโพสท่าไม่เป็น! 📸"\n\n🎙️ [Voiceover พูดด้วยอารมณ์กันเอง]:\n"เบื่อไหมครับ? อยากได้รูปถ่ายสไตล์ละมุนๆ แต่พอยืนมองกล้องทีไร หัวใจสั่น เกร็งหน้าไปหมด! 😆 วันนี้ช่างภาพ ${pName} มีทริคง่ายๆ 3 ข้อมาโชว์ให้เห็นเบื้องหลังการสอนโพสท่าแบบปล่อยชิล เสริมมุมขาสวยตัวเพรียว คุยตลกคลายเครียดหน้ากล้องจนได้ภาพสวยเป๊ะเป็นธรรมชาติในเซ็ตล่าสุดนี้ครับ!"\n\n📌 [On-Screen Text]: "แนะมุมสวยละมุน สวยจบพร้อมลงโซเชียลทันที"\n\n🎙️ [Voiceover ปิดท้าย]:\n"ใครชอบประสบการณ์ถ่ายรูปแบบเป็นกันเอง ชิลๆ เหมือนไปเที่ยวกับเพื่อน ทักแชท Inbox มาจับจองคิวว่างเดือนนี้กันได้นะค้าบ เหลือ 2 ที่สุดท้ายน้า!"\n\n🎵 [แนะนำเพลงคู่ใจ]: ใช้เพลงจังหวะแจ๊สเกาหลี (Lo-Fi Acoustic Cute Beat) สดใส เบาๆ ชวนมองรูปเพลินๆ`;
-    hook = `สะกดสายตาใน 3 วินาทีแรกด้วยข้อความ On-screen 'เบื้องหลังการถ่ายภาพคนโพสท่าไม่เก่ง' ซึ่งเป็นปัญหาใหญ่ที่คนทั่วไปกำลังเลื่อนหาช่างภาพกลัวอยู่ เพื่อดึงความฉงนใจอยากดูเฉลย`;
-    tips = `ถ่ายวิดีโอคลิปสั้นเป็นมุมกว้าง (Behind the scenes) ที่ช่างภาพกำลังเล่นสนุก หัวเราะ ชี้แนะตัวแบบด้วยความเป็นกันเอง และสไลด์สลับกับผลงานภาพที่แต่งเสร็จประณีตเปรียบเทียบคาหน้าจอ`;
-  } else if (targetChannel.includes("Story")) {
-    rep = `📸✨ [Instagram & FB Story Visual Pitch] ✨📸\n\n“รอยยิ้มอารมณ์ธรรมชาติเต็มสิบ.. ทิปง่ายๆ สไตล์ช่างภาพที่เป็นกันเองสุดใจ! 🥰”\n\n🔥 คิวถ่ายว่างรอบสัปดาห์นี้หลุดจอง 1 วันสุดท้ายเท่านั้น!\n👉 ทักด่วนลดค่าบริการล็อกวันแถมฟรีภาพเพิ่มทันที\n\n📩 [สติกเกอร์ DM ชวนคุย]: 'อยากมีรูปสวยสะกดใจทักพิมพ์ 1 ด่วนคราบบบ!'`;
-    hook = `สาดด้วยข้อเสนอ 'คิวว่างหลุดจองด่วน' และกระตุ้นความรีบเร่งพร้อมปุ่มสติกเกอร์ตอบโต้อย่างรวดเร็ว (Low friction) เพื่อเปลี่ยนยอดรับชมมาเป็นแชตคุยจริงในทันที`;
-    tips = `เลือกรูปเดี่ยวพอร์ตเทรตมุมปังที่สุดที่แสงตกไล่ขอบแก้ม (Rim light) สวยสมบูรณ์ ใส่ฟิลเตอร์เม็ดฝุ่นเกรนเบาๆ ในสตอรี่ชวนให้สะดุดตาชวนดึงดูดสายตา`;
-  } else {
-    rep = `สวัสดีชาวกลุ่มคนรักภาพถ่ายทุกคนครับ 🙏📸\n\nผม ${pName} ฝากตัวด้วยคนคร้าบ วันนี้พกผลงานสไตล์ ${pStyle} ละมุนๆ คัดสรรใบโปรดล่าสุดมาฝากทุกคนในพิกัดเด็ดๆ ครับ 😊\n\nสำหรับบ่าวสาว เพื่อนๆ น้องๆ ท่านใดที่วางแผนเตรียมตารางเก็บโมเมนต์สำคัญ ไม่ว่าจะโปรไฟล์ แฟชั่น หรือพรีเวดดิ้ง แวะเยี่ยมชมพอร์ตและพูดคุยปรึกษาพิกัด/เสื้อผ้าฟรีได้เลยน้า ช่างภาพเป็นกันเอง อารมณ์ดี ตลก และใจเย็นมากๆ ครับ!\n\n📌 พิกัดพร้อมลุย: ยินดีเดินทางดูแลทั่วประเทศครับ\n💸 งบเบาๆ เป็นกันเอง เจรจาจับคู่แพ็กเกจราคาพรีเมียมตัวจริงได้เสมอคราบบบ\n\nสนใจล็อกคิว ทัก Inbox แชทเฟสคุยถามตารางได้เลยครับ ยินดีบริการน้าค้าบผม ❤️👇`;
-    hook = `เน้นการสร้างปฏิสัมพันธ์แบบถ่อมตน นึกถึงการฝากตัวและให้ความประทับใจเป็นหลัก เพื่อเลี่ยงความรู้สึกที่ผู้ใช้งานกลุ่มกลุ่มช่างภาพจะต้านโพสต์สแปมขายเกินเหตุ`;
-    tips = `โพสต์รูปเด็ดที่สุด 1 รูปพรีเมียมเป็นปกนำ แล้วประกบคลิปเบื้องหลังสั้นๆ หรือรูปภาพชุดย่อยอีก 3-4 ใบเป็นเลย์เอาต์ช่องสี่เหลี่ยมเด็ดๆ ชวนคลิกเปิดดูรูปขยายเต็มสเกล`;
-  }
-
-  return res.json({
-    repurposedContent: rep,
-    hookStrategy: hook,
-    formattingTips: tips
+  const data = await generateAIResponse(prompt, schema, fallbackResponse);
+  res.json({
+    empathyAndGreeting: data.empathyAndGreeting || data.empathicGreeting || empathyAndGreeting,
+    boundaryExplanation: data.boundaryExplanation || data.coreExplanation || boundaryExplanation,
+    valueOffer: data.valueOffer || data.valueCompensation || valueOffer,
+    cta: data.cta || data.callToAction || cta,
+    fullReplyMessage: data.fullReplyMessage || fullReplyMessage
   });
 });
 
-// 11. AI Target Audience Persona Generator
-app.post("/api/generate-personas", async (req, res) => {
-  const { jobType, style, startingPrice, serviceArea, photographerProfile } = req.body;
-
-  const pName = photographerProfile?.name || "ช่างภาพ";
-  const pStyle = style || photographerProfile?.style || "ธรรมชาติ";
-  const pPrice = startingPrice || photographerProfile?.startingPrice || "3,500";
-  const pArea = serviceArea || photographerProfile?.serviceArea || "กรุงเทพฯ";
-
-  const prompt = `คุณคือผู้เชี่ยวชาญการตลาดดิจิทัลและจิตวิทยาการขายขั้นสูงสำหรับช่างภาพเมืองไทย
-กรุณาสร้างอวาตารกลุ่มเป้าหมาย (Ideal Customer Persona) จำนวน 3 บุคลิกภาพที่แตกต่างกันอย่างละเอียดและเฉียบคม โดยอ้างอิงจากข้อมูลต่อไปนี้:
-- ประเภทบริการของช่างภาพ: ${jobType}
-- สไตล์คุมโทนรูปภาพ: ${pStyle}
-- พิกัดพื้นที่รับงาน: ${pArea}
-- อัตราค่าบริการเริ่มต้น: ${pPrice} บาท
-- แบรนด์ของช่างภาพ: ${pName}
-
-กรุณาวิเคราะห์และตอบกลับในรูปแบบ JSON ตาม Schema นี้:
-{
-  "personas": [
-    {
-      "name": "ชื่ออวาตารสมมติภาษาไทยที่สะท้อนคาแร็กเตอร์ชัดเจน (เช่น 'น้องไอซ์ - บัณฑิตจบใหม่สายติสท์')",
-      "demographics": "ข้อมูลประชากรศาสตร์สั้นๆ (อายุ, เพศ, การศึกษา/อาชีพ, พฤติกรรมโซเชียลหลัก)",
-      "deepDesire": "ความต้องการลึกๆ ทางจิตวิทยาหรือเบื้องหลังภาพในฝันที่พวกเขาอยากได้ แสงและโทนที่ถูกชะตา",
-      "mainObjection": "ข้อกังวลลึกๆ หรือเหตุผลที่จะทำให้เขาปัดโพสต์ทิ้งหรือไม่ตัดสินใจจอง (เช่น กลัวช่างภาพดุ, กังวลราคา)",
-      "triggerWords": "คำทองคำหรือประโยคสะกิดใจ 3 คำที่หากได้ยินจะตัดสินใจทักคุยทันที",
-      "upsellScript": "สคริปต์เสนอขายปิดแชตอัปเซลล์เฉพาะบุคคลนี้ด้วยภาษาสุภาพแต่อ่อนโยนเป็นกันเองสไตล์ช่างภาพแสนดี"
-    }
-  ]
-}
-
-กรุณาสร้าง Persona ที่ใช้งานได้จริง และเป็นภาษาไทยที่เรียบง่ายเป็นธรรมชาติ`;
-
-  if (isRealAi && ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              personas: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    demographics: { type: Type.STRING },
-                    deepDesire: { type: Type.STRING },
-                    mainObjection: { type: Type.STRING },
-                    triggerWords: { type: Type.STRING },
-                    upsellScript: { type: Type.STRING },
-                  },
-                  required: ["name", "demographics", "deepDesire", "mainObjection", "triggerWords", "upsellScript"],
-                }
-              }
-            },
-            required: ["personas"],
-          }
-        }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Generate Personas Error:", err);
-    }
-  }
-
-  // High-fidelity Thai fallback personas based on inputs
-  const fallbackPersonas = [
-    {
-      name: "น้องมายด์ - บัณฑิตวัยรุ่นสายคอนเทนต์ไอจี (IG Story Creator)",
-      demographics: "เพศหญิง, อายุ 21-23 ปี, นักศึกษาพึ่งจบใหม่ในเขต " + pArea + " ที่ใช้งาน Instagram ตลอดเวลา",
-      deepDesire: "อยากมีเซ็ตภาพถ่ายนอกรอบที่คุมโทนสไตล์ " + pStyle + " ถ่ายทอดความน่ารักสดใสและเป็นธรรมชาติโดยไม่มีตึกหรือองค์ประกอบอื่นรบกวนฉากหลัง อยากได้รูปรีวิวส่งด่วนใน 24 ชั่วโมงแรกเอาไปอัปสปอยเพื่อนร่วมรุ่น",
-      mainObjection: "กลัวช่างภาพดุ อารมณ์เสีย หรือบังคับให้โพสท่าที่ยากๆ แปลกๆ จนอึดอัด กังวลเรื่องการส่งงานช้าข้ามเดือน",
-      triggerWords: "เน้นสอนโพสท่าแบบปล่อยชิล, เป็นกันเองตลกเหมือนมาเที่ยวกับเพื่อน, การันตีส่งรูปแต่งสีไวใน 3 วัน",
-      upsellScript: `สวัสดีครับน้องมายด์ค้าบ 😊 ยินดีแสดงความยินดีกับความสำเร็จล่วงหน้าเลยน้า สำหรับน้องมายด์ที่อยากได้รูปสไตล์ ${pStyle} ละมุนๆ ไปแต่งไอจีสวยๆ พี่แนะเซ็ตโปรเด็ดมินิมอลตัวนี้เลยน้า พี่จะแถมลูกโป่งพาสเทลและเครื่องพ่นฟองสบู่เป็นพร็อพเสริมอารมณ์ความละมุนให้ฟรี และพิเศษสุดๆ พี่ดูแลแต่งเนียนสเปเชียลผิวเนียนลบริ้วรอยจุดด่างดำพร้อมแต่งทรงให้อีก 15 รูปไปเลยครับน้า แถมการันตีส่งไฮไลต์ความทรงจำใน 12 ชั่วโมงแรกทันอัปลง Reels สนุกสนานแน่นอนคราบบบ!`
+// 8. Package Builder / Improver
+app.post("/api/improve-package", async (req, res) => {
+  const { name, price, hours, photosDelivered, inclusions, conditions } = req.body;
+  const prompt = `ปรับแต่งแนะแพ็กเกจ: ชื่อ ${name || " Lite "}, ราคา ${price || "3,500"}, ถ่าย ${hours || "4"} ชม., รูป ${photosDelivered || "ไม่จำกัด"}, แถม ${inclusions || "ปรับผิวแสงนวล"}, เงื่อนไข ${conditions || "มัดจำ"}`;
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      aiEnhancedText: { type: Type.STRING },
+      aiPromoPost: { type: Type.STRING }
     },
-    {
-      name: "คุณกอล์ฟ & คุณอาย - คู่รักหมั้นหมายสร้างอนาคต (Premium Wedding Seekers)",
-      demographics: "คู่รักเพศชาย/หญิง, อายุ 26-32 ปี, พนักงานบริษัทและข้าราชการวัยทำงานที่อยากมีพรีเวดดิ้งคุณภาพสูง",
-      deepDesire: "ต้องการบันทึกแววตา ความใส่ใจ และโมเมนต์โรแมนติกที่อบอุ่นเหนือกาลเวลา ถ่ายทอดด้วยสไตล์ " + pStyle + " เรียบหรูคลาสสิก",
-      mainObjection: "คิดว่าราคาเริ่มต้น " + pPrice + " บาทของเพจเรายังสูงกว่าตลาดย่อยบางเจ้า และกังวลว่าช่างภาพไม่มีกล้องหรือไฟสำรองจนทำให้หากเกิดอุบัติเหตุทางเทคโนโลยีรูปจะสูญหาย",
-      triggerWords: "มีกล้องสำรองและคลังแฟลชพร้อมทุกชุด, จัดแต่งไฟดึงมิติดูแพง, สอนเทคนิคไกด์คู่โพสท่ากอดอุ่นเป็นธรรมชาติ",
-      upsellScript: `ขอแสดงความยินดีในวาระมงคลล่วงหน้าเลยนะครับคุณกอล์ฟคุณอาย 😊📸 สำหรับพิธีแต่งงานสำคัญพรีเมียม พี่ขอเสนอแนะขยับขึ้นมาดูแพ็กเกจ 'Cinematic Grand Full Day' ครับน้า นอกเหนือจากช่างภาพหลัก 2 คนช่วยระดมเก็บทั้งมุมพิธีหมั้นด้านหน้าและมุมสวมแหวนเจาะลึกด้านหลังแล้ว เราพกเซ็ตไฟสตูแฟลชสตูดิโอและกล้องเซนเซอร์สำรองทุกตัว เพื่อป้องกันความเสี่ยง และแต่งผิวรีทัชให้อลังการสะกดใจผู้เข้าร่วมงานแน่นอนครับน้า!`
-    },
-    {
-      name: "พี่นก - เจ้าของร้านขนมหวานสไตล์โมเดิร์น (Cafe & Small Business Owner)",
-      demographics: "เพศหญิง, อายุ 28-42 ปี, เจ้าของร้านอาหารหรือคาเฟ่ในพื้นที่ " + pArea + " ที่ต้องการโฆษณาเชิงพาณิชย์",
-      deepDesire: "ต้องการให้ภาพผลงานถ่ายทอดรายละเอียดสีสันสไตลิ่งดึงเท็กซ์เจอร์ของขนมให้ออกมาฉ่ำชวนกิน ดันยอดไลก์และยอดสั่งอาหาร Lineman ทะยานขึ้น 3 เท่า",
-      mainObjection: "กลัวทีมช่างภาพนำพาอุปกรณ์เกะกะรบกวนลูกค้าที่กำลังนั่งดื่มกาแฟในร้าน หรือกังวลว่าช่างภาพจะจัดพร็อพส่องแสงไม่เป็นศิลปะ",
-      triggerWords: "บริการพกไฟสตูขนาดมินิแต่ทรงพลัง, จัดวางพร็อพอาหารฟรีโดยฟู้ดสไตลิสต์, มอบลิขสิทธิ์ภาพใช้โฆษณาพาณิชย์ตลอดชีพ",
-      upsellScript: `สวัสดีครับพี่นกดีกรีร้านอร่อยของจังหวัดเรา 😊 ช่างภาพยินดีช่วยอัปยอดขายสุดพลังเลยคราบบบ สำหรับขนมปังอบชีสฉ่ำวาวของพี่นก พี่แนะนำแพ็กเกจ 'Commercial Food Premium' ครับน้า เราจะมีสไตลิสต์จัดทิศทางแสงเงาแบบสตูดิโอโมเดิร์นช่วยประดับผลไม้และจานไม้วินเทจให้ภาพดูดึงดูดน่ากิน ดันความหิวพุ่งพรวด และพี่ขอมอบสิทธิ์ลิขสิทธิ์แท้เชิงพาณิชย์ให้พี่นกนำไปขึ้นป้ายใหญ่หรือสื่อสิ่งพิมพ์โปรโมตร้านได้ตลอดชีพอย่างไร้ขอบเขตเลยครับ คุ้มแสนคุ้มแน่นอนคราบบบ!`
-    }
-  ];
+    required: ["aiEnhancedText", "aiPromoPost"]
+  };
 
-  return res.json({ personas: fallbackPersonas });
+  const pName = name || "แพ็กเกจพอร์ตละมุนใจ";
+  const pPrice = price || "3,500";
+  const pHours = hours || "4";
+  const pPhotos = photosDelivered || "ไม่จำกัดจำนวนภาพคัดสรรแสงสวย";
+  const pInclusions = inclusions || "ปรับผิวเรียบเนียนอุ่นใจโทนเกาหลีแถมพรีวิวด่วนใน 24 ชม.";
+  const pConditions = conditions || "โอนจองมัดจำล็อกรอบชัวร์";
+
+  const fallback = {
+    aiEnhancedText: `✨📸 เติมเต็มช่วงเวลาสุดพิเศษกับแบรนด์ช่างภาพไทยแพ็กเกจ "${pName}" ✨\n\nเพียง ${pPrice}.- บาทเท่านั้น แต่ดูแลอบอุ่นประดุจครอบครัว:\n✅ ถ่ายรูปจุใจยาวนาน ${pHours} ชั่วโมงเต็มอิ่ม ช่างภาพใจเย็น ไม่เร่ง ไม่กดดัน\n✅ ผลงานส่งมอบ: ${pPhotos}\n✅ บริการพรีเมียมลิมิเต็ด: ${pInclusions}\n✅ ไกด์ท่าโพสอย่างเป็นกันเอง ตลกผ่อนคลายความเขินอาย 100%\n\n🔒 เงื่อนไขตกลงสบายใจ: ${pConditions}\n\n*แพ็กเกจนี้สรรสร้างมาเพื่อลูกค้าเขินกล้องโดยเฉพาะ รอยยิ้มธรรมชาติแฮปปี้ชัวร์คร้าบ 🥰📸`,
+    aiPromoPost: `🔥📸 โค้งสุดท้ายโปรต้อนรับซีซั่นใหม่ จองคิวถ่ายโปรพรีเมียมแพ็กเกจ "${pName}"! 📸🔥\n\nใครบอกว่าคนเขินกล้องเกร็งตาจะไม่มีรูปสวยอัปลงโซเชียลสกินสวยหรูล่ะ? คิวถ่ายสุดประณีตจำกัดเพียง 2 สิทธิ์ต่อสัปดาห์เท่านั้นน้าเพื่อคุณภาพสูงสุด\n\n✨ สิทธิประโยชน์เต็มอิ่ม:\n⏱️ เวลาชิวหามุมแสงพริ้ว ${pHours} ชั่วโมงเต็มอิ่ม\n📷 คัดเกรดสีผิวพาสเทลเนียนใจ: ${pPhotos}\n🎁 พิเศษของแถมพรีวิวเร็วทันใจ: ${pInclusions}\n\n"รูปถ่ายที่มีมูลค่าไม่ใช่เพราะพิกเซลคมกริบ แต่เพราะรอยยิ้มที่คุณแฮปปี้พึ่งพาได้เวลานึกถึง.."\n\n💬 สนใจแชตปรึกษามู้ดคิวว่างจองล็อกสิทธิ์ ทัก Inbox เพจหาช่างภาพตอนนี้เลยคราบบบ ❤️`
+  };
+
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
 });
 
-// Start Server with Vite Middleware
+// 9. Compare Packages Pricing
+app.post("/api/compare-packages", async (req, res) => {
+  const { packages: pkgs, photographerProfile } = req.body;
+  const pkg1 = pkgs?.[0] || { name: "แพ็กเกจเริ่มต้น", price: "3,000" };
+  const pkg2 = pkgs?.[1] || { name: "แพ็กเกจซิกเนเจอร์", price: "5,000" };
+
+  const prompt = getPackageComparisonPrompt(pkg1, photographerProfile || { name: "ช่างภาพแสนดี", style: "ธรรมชาติละมุน", startingPrice: "3,500" });
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      comparisonGrid: { type: Type.ARRAY, items: { type: Type.STRING } },
+      valueProposition: { type: Type.STRING },
+      upsellScript: { type: Type.STRING },
+      objectionResponses: { type: Type.STRING }
+    },
+    required: ["comparisonGrid", "valueProposition", "upsellScript", "objectionResponses"]
+  };
+
+  const fallback = {
+    comparisonGrid: [
+      `⏰ เวลาถ่ายแฮปปี้จุใจคูณสอง: แพ็กเกจ "${pkg2.name}" ขยายเวลาถ่ายยาวชิวๆ ดึงมู้ดแสงเย็น Golden hour สบายไม่เหนื่อยหอบเกร็ง`,
+      `🎨 ผิวพรรณแต่งประณีตระดับพรีเมียมพาสเทลแต่งละเอียดทีละรูปจำนวนรูปคัดสรรสวยจบจุใจกว่ามาก`,
+      `✨ สิทธิ์ของแถมลิมิเต็ดบริการแชร์พรีวิวด่วนไฮไลท์ในคืนแรกเอาไปโพสต์สตอรี่ขิงเพื่อนๆ ได้ทันที`
+    ],
+    valueProposition: `การยอมขยับระดับสิทธิ์มาดีลพรีเมียม จะช่วยคุ้มครองความสุขความอบอุ่นใจอันแสนล้ำค่าของรอยยิ้มอย่างละเมียดละไมสูงสุด เพราะโมเมนต์สำคัญช่วงนี้มีเพียงครั้งเดียว การบริการประณีตจากช่างภาพมืออาชีพจะคงอยู่ให้คุณย้อนรอยดูอย่างภูมิใจไปชั่วกาลนาน`,
+    upsellScript: `“ยินดีต้อนรับครับน้าคุณลูกค้า 😊 สำหรับแพ็กเกจตั้งต้น "${pkg1.name}" ราคา ${pkg1.price}.- ดีต่อใจมากๆ เลยน้า แต่ถ้าอยากได้มู้ดรอยยิ้มสวยฟินจัดเต็มแบบอุ่นใจสุดพลัง ช่างภาพแนะนำแพ็กเกจยอดฮิตซิกเนเจอร์ "${pkg2.name}" ราคาเพียง ${pkg2.price}.- ดีกว่ามากคราบบบ!\n\nเราจะได้ขยายเวลาถ่ายชิวๆ สบายหามุมปังไม่เร่งรีบ แถมรีทัชปรับสเกลเกรดสีผิวผิวเนียนละมุนละเอียดเพิ่มขึ้นจุใจ และส่งพรีวิวด่วนทันควันในคืนแรกให้ไปลงฟีดสตอรี่อวดเพื่อนๆ ได้เลยครับผม สะดวกพิจารณารับตัวพรีเมียมนี้ล็อกคิวรอบแสงสวยคุ้มฝีมือเลยดีไหมครับผม? 🥰👇”`,
+    objectionResponses: `“สาเหตุที่แพ็กเกจ "${pkg2.name}" คุ้มค่าโดนใจกว่าเนื่องจากช่างภาพได้ทุ่มเทสเกลเวลาขัดเกลาภาพ ปรับผิวพรรณแต่งผิวหน้าเนียนและเกรดสกินโทนออทัมน์ด้วยมือละเอียดทีละใบ และของแถมการส่งพรีวิวไฮไลท์ภาพไวทันใจคืนแรกเพื่อแฮปปี้ลงอวดทันทีกิจกรรม เหมาะสมที่สุดสำหรับความประณีตลิมิเต็ดแท้จริงครับคุณลูกค้า”`
+  };
+
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
+});
+
+// 10. Content Repurposer
+app.post("/api/repurpose-post", async (req, res) => {
+  const { originalPost, targetChannel, photographerProfile } = req.body;
+  const prompt = getRepurposingPrompt(originalPost || "", targetChannel || "Reels Script", photographerProfile?.name || "ช่างภาพแสนดี", photographerProfile?.style || "ธรรมชาติละมุน");
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      repurposedContent: { type: Type.STRING },
+      hookStrategy: { type: Type.STRING },
+      formattingTips: { type: Type.STRING }
+    },
+    required: ["repurposedContent", "hookStrategy", "formattingTips"]
+  };
+
+  const fallback = {
+    repurposedContent: `🎬✨ [บทพูดวิดีโอสั้น / แคปชั่น สำหรับช่องทาง: ${targetChannel || "Reels Script"}]\n\n“รู้ไหมครับว่า... รูปถ่ายทีเผลอที่อบอุ่นละมุนที่สุด มักจะเกิดขึ้นในวินาทีที่คุณไม่ได้มองเลนส์กล้องเลยน้า!” 🥰📸\n\n(สลับคัตวิดีโอสั้นตลกเบื้องหลัง สลับภาพพอร์ตสกินนุ่มหวานๆ)\n\nนี่คือเบื้องหลังความสุขและรอยยิ้มธรรมชาติของลูกค้าสัปดาห์นี้ครับ ช่างภาพแสนดีคอยบิ้วท์สอนท่าเก่งเป็นมิตรสุดๆ คลายความกลัวเขินกล้องได้เป็นสิบระดับเลย! ใครอยากได้เซ็ตพอร์ตฟิล์มเกาหลีสวยจับใจแบบนี้ ทักแชทคุยเช็กสิทธิ์รอบวันว่างด่วนก่อนคิวเต็มนะค้าบผม! ❤️👇\n\n#ช่างภาพเป็นกันเอง #สอนจัดท่าโพส #Reels`,
+    hookStrategy: "ใช้เทคนิคคำเปิดหัวละลายกำแพงข้อกังวลลึกเรื่องคนกลัวเกร็งกล้อง เพื่อตะล่อมดึงสายตาคนปัดฟีดให้จ้องหยุดชมคลิปตั้งแต่ 3 วินาทีแรกสุด",
+    formattingTips: "แนะนำให้ใช้คู่คลิปคุยเล่นหัวเราะสั้น 3 วินาทีแรกประกบคู่ภาพเซ็ตไฮไลท์ที่สวยที่สุดสลับเฟดไปมาอย่างรวดเร็ว ประกอบเพลงคลื่นบีตโลฟายฟิลกู๊ดนุ่มนวล"
+  };
+
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
+});
+
+// 11. Custom Captions Generator
+app.post("/api/generate-captions", async (req, res) => {
+  const { customerName, jobType, location, toneStyle, notes } = req.body;
+  const prompt = getCaptionGeneratorPrompt(jobType || "ถ่ายภาพบุคคล", notes || "เป็นกันเอง", customerName || "ลูกค้า", toneStyle || "ธรรมชาติละมุน");
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      reviewCaption: { type: Type.STRING },
+      thankYouMessage: { type: Type.STRING },
+      requestReview: { type: Type.STRING },
+      portfolioCaption: { type: Type.STRING },
+      albumCaption: { type: Type.STRING },
+      singlePhotoCaption: { type: Type.STRING },
+      beforeAfterCaption: { type: Type.STRING }
+    },
+    required: ["reviewCaption", "thankYouMessage", "requestReview", "portfolioCaption", "albumCaption", "singlePhotoCaption", "beforeAfterCaption"]
+  };
+
+  const customer = customerName || "ลูกค้า";
+  const job = jobType || "ถ่ายภาพบุคคล";
+  const loc = location || "คาเฟ่ลับแสงเย็น";
+  const tone = toneStyle || "พาสเทลเกาหลี";
+
+  const fallback = {
+    reviewCaption: `📸✨ “รอยยิ้มแสนอบอุ่นและธรรมชาติที่สุด ไม่ต้องอาศัยการจัดฉากปรุงแต่ง...”\n\nวันนี้พาทุกคนไปส่องผลงานถ่าย ${job} ร่วมกับคุณ ${customer} ณ ${loc} ขอบอกเลยว่าทริปนี้เต็มเปี่ยมไปด้วยความฮาเสียงหัวเราะตลอดเวลา น้องบอกเขินง่ายมากๆ โพสไม่ถูก แต่พอบอกเคล็ดลับสูตรลับเผลอกลับได้มู้ดแสงเงาโทน ${tone} สวยสั่นสะท้อนสะกดตาแก้มบุ๋มละลายใจเลยคร้าบ 😆🤍\n\nขอบพระคุณคุณ ${customer} มากๆ น้าครับที่เหนื่อยลุยสู้แดดสู้กล้องไปด้วยกัน แวะส่งความรักกดใจชมภาพเซ็ตน่ารักกันได้เต็มอิ่มคราบบบ! #ช่างภาพมืออาชีพ #สอนจัดท่าโพส #โทน${tone}`,
+    thankYouMessage: `ขอบคุณคุณ ${customer} สำหรับทริปถ่ายภาพสนุกฟีลกู๊ดวันนี้น้าค้าบน้า 🙏✨ เป็นระเบียบเรียบร้อยสนุกเป็นกันเองสุดขีดเลย ตัวแบบน่าเอ็นดูสู้กล้องมากๆ เดี๋ยวช่างภาพด่วนส่งพรีวิวรูปรีวิวคัดสวยๆ ให้ส่องคืนนี้เลยนะครับ ส่วนงานรวมเซ็ตเต็มจะรีบขัดเกลาแสงพาสเทลสกินละมุนให้แบบละเมียดละไมส่งด่วนที่สุดครับ พักผ่อนรักษาสุขภาพมากๆ แล้วปัดหมุดพบกันใหม่ทริปหน้านะคร้าบบบ 🥰`,
+    requestReview: `คุณ ${customer} ครับ ช่างภาพแวะมาส่งความสุขเบาๆ ยามค่ำคืนน้าคร้าบ 😊 หากอิมพอร์ตเช็กรับไฟล์รูปคัดคุมโทนเสร็จครบถ้วนเรียบร้อยแล้ว ถูกใจฝีมือการดูแลแนะนำของผม รบกวนเวลาอันมีค่าสักครึ่งนาทีกดปุ่มสกรีนเขียนสั้นรีวิวความประทับใจเป็นกำลังใจหน้าเพจช่างภาพด้วยน้าค้าบ จะยินดีนอบน้อมนับถือเป็นกำลังใจพัฒนาผลงานอย่างยิ่งยวดเลยคราบบบ ขอบคุณมากๆ เลยครับ! ❤️✨`,
+    portfolioCaption: `🎞️📸 [Visual Portfolio Masterpiece] 📸🎞️\n\n“The camera captures what the heart feels, frozen in a split second of timeless warmth.”\n\nสุนทรียภาพแห่งทิศทางแสงเงา แววตาสื่อสารอารมณ์ และเกรดสีผิวเรียบเนียนสไตล์ ${tone} เผยแพร่ผลงานที่ประดิษฐ์ขึ้นอย่างพิถีพิถันให้ชื่นชมความสุขของศิลปะร่วมกันคราบบบ! ✨`,
+    albumCaption: `📢✨ [เปิดพอร์ตผลงานอัลบั้มเต็ม] สตรีมภาพรอยยิ้มพรีเมียมจากทริปคุณ ${customer} ในพิกัดปักหมุด ${loc}\n\nเซ็ตพอร์ตชุดนี้ตั้งใจคัดขัดเกลาและปรับค่าคุมแสงสว่างนุ่มฟูสีหวานอบอุ่น เพื่อเก็บบันทึกรอยยิ้มความสวยของคุณให้ออกมามีมิติพรีเมียมที่สุด ค่อยๆ ปัดเลื่อนดูทีละใบแล้วกดไลก์บอกหน่อยน้าคร้าบว่าโดนใจใบไหนสูงสุด! 🥰👇`,
+    singlePhotoCaption: `“ล็อกเวลาความอบอุ่นแสงยามบ่าย กับประกายสายตาที่สว่างไสว” 🌻☕✨ #สตอรี่สีละมุน #โทน${tone}`,
+    beforeAfterCaption: `🎨👈 Left (Raw) vs Right (Upgraded Edit) 👉🎨\n\nเบื้องหลังความวิจิตรบรรจงในการแต่งเกรดสกินสีผิว ผิวเนียนผุดผ่องเรียบหรูทีละรูปด้วยใจ เพื่อให้มั่นใจได้ว่าลูกค้าที่รักของเพจเราจะได้ครอบครองเซ็ตพอร์ตฟิล์มเกาหลีที่งดงามคุ้มค่าหรูหราระดับสากลที่สุดคร้าบผม!`
+  };
+
+  const data = await generateAIResponse(prompt, schema, fallback);
+  res.json(data);
+});
+
+// --- Facebook Hub & OAuth API Integrations ---
+
+const FB_APP_ID = process.env.FACEBOOK_APP_ID;
+const FB_APP_SECRET = process.env.FACEBOOK_APP_SECRET;
+const isFbRealMode = !!FB_APP_ID && !!FB_APP_SECRET && FB_APP_ID.trim() !== "" && FB_APP_SECRET.trim() !== "";
+
+// Facebook Config Endpoint
+app.get("/api/facebook/config", (req, res) => {
+  res.json({
+    isRealMode: isFbRealMode,
+    appId: FB_APP_ID || null
+  });
+});
+
+// OAuth URL Generator
+app.get("/api/auth/facebook/url", (req, res) => {
+  const serverOrigin = process.env.APP_URL || req.get('origin') || `${req.protocol}://${req.get('host')}`;
+  
+  if (!isFbRealMode) {
+    // Sandbox mode: Return simulation callback URL
+    return res.json({
+      url: `${serverOrigin}/api/auth/facebook/sandbox-callback`,
+      isRealMode: false
+    });
+  }
+
+  // Real Mode: Build official Facebook Graph OAuth login URL
+  const redirectUri = `${serverOrigin}/api/auth/facebook/callback`;
+  const fbOAuthUrl = `https://www.facebook.com/v20.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=public_profile,pages_show_list,pages_read_engagement,pages_manage_posts,publish_video`;
+  
+  res.json({
+    url: fbOAuthUrl,
+    isRealMode: true
+  });
+});
+
+// Sandbox Simulator Interactive Login Callback Page
+app.get("/api/auth/facebook/sandbox-callback", (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Facebook Login Sandbox Simulator</title>
+        <style>
+          body {
+            background-color: #0d0e12;
+            color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+          }
+          .card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            width: 440px;
+            padding: 24px;
+            text-align: center;
+          }
+          .icon { font-size: 48px; margin-bottom: 12px; }
+          .title { color: #3b82f6; font-size: 20px; font-weight: bold; margin-bottom: 8px; }
+          .subtitle { color: #9ca3af; font-size: 13px; line-height: 1.5; margin-bottom: 20px; }
+          .badge {
+            background-color: rgba(245, 158, 11, 0.1);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 20px;
+            display: inline-block;
+          }
+          .btn-primary {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.2s;
+          }
+          .btn-primary:hover { background-color: #2563eb; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="icon">🔬</div>
+          <div class="title">Facebook Sandbox Simulator</div>
+          <div class="badge">ระบบกำลังรันในโหมดจำลองสถานการณ์ทดสอบ</div>
+          <div class="subtitle">คุณสามารถคลิกปุ่มด้านล่างเพื่อเชื่อมบัญชีแฟนเพจจำลองของแบรนด์ช่างภาพของคุณ ได้อย่างปลอดภัยทันทีโดยไม่ต้องตั้งค่าเครดิต API คีย์แต่อย่างใดคราบบบ</div>
+          <button class="btn-primary" onclick="approveSandbox()">ดำเนินการต่อในฐานะ ช่างภาพแสนดี (Sandbox)</button>
+        </div>
+        <script>
+          function approveSandbox() {
+            if (window.opener) {
+              window.opener.postMessage({
+                type: "OAUTH_AUTH_SUCCESS",
+                payload: {
+                  accessToken: "sb_token_user_mock_99aa",
+                  userName: "ช่างภาพซิกเนเจอร์ (Sandbox)",
+                  isRealMode: false
+                }
+              }, "*");
+              document.querySelector('.card').innerHTML = '<div style="padding: 20px;"><span style="font-size: 48px;">✅</span><h3 style="color: #10b981; margin-top: 15px;">เชื่อมต่อจำลองสิทธิ์สำเร็จ!</h3><p style="color: #9ca3af; font-size: 12px;">หน้าต่างนี้จะปิดตัวลงโดยอัตโนมัติ...</p></div>';
+              setTimeout(() => window.close(), 1000);
+            } else {
+              alert("Error: Window opener not found!");
+            }
+          }
+        </script>
+      </body>
+    </html>
+  `);
+});
+
+// Real OAuth Authorization Exchange Code Callback
+app.get("/api/auth/facebook/callback", async (req, res) => {
+  const { code } = req.query;
+  const serverOrigin = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const redirectUri = `${serverOrigin}/api/auth/facebook/callback`;
+
+  if (!code) {
+    return res.status(400).send("Authorization code missing from query parameters");
+  }
+
+  try {
+    // 1. Exchange OAuth code for User Access Token
+    const tokenUrl = `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${FB_APP_SECRET}&code=${code}`;
+    const tokenRes = await fetch(tokenUrl);
+    const tokenData = await tokenRes.json() as any;
+
+    if (tokenData.error) {
+      throw new Error(tokenData.error.message);
+    }
+
+    const userAccessToken = tokenData.access_token;
+
+    // 2. Query user profile credentials
+    const profileRes = await fetch(`https://graph.facebook.com/v20.0/me?access_token=${userAccessToken}&fields=name`);
+    const profileData = await profileRes.json() as any;
+    const userName = profileData.name || "Facebook User";
+
+    // Respond back using window message channel
+    res.send(`
+      <html>
+        <body style="background: #0d0e12; color: #f3f4f6; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+          <div style="text-align: center; padding: 24px; background: rgba(255,255,255,0.03); border: 1px solid rgba(16,185,129,0.2); border-radius: 12px; max-width: 380px;">
+            <p style="font-size: 40px; margin: 0 0 12px 0;">🎉</p>
+            <h3 style="color: #10b981; margin: 0 0 8px 0;">เชื่อมต่อกับ Facebook สำเร็จ!</h3>
+            <p style="font-size: 13px; color: #9ca3af; line-height: 1.5; margin: 0 0 16px 0;">ยินดีต้อนรับครับคุณ ${userName} บัญชีของคุณถูกเชื่อมต่อเรียบร้อยแล้ว ระบบกำลังนำทางกลับ...</p>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: "OAUTH_AUTH_SUCCESS",
+                  payload: {
+                    accessToken: "${userAccessToken}",
+                    userName: "${userName}",
+                    isRealMode: true
+                  }
+                }, "*");
+                setTimeout(() => window.close(), 1200);
+              } else {
+                window.location.href = "/";
+              }
+            </script>
+          </div>
+        </body>
+      </html>
+    `);
+  } catch (err: any) {
+    console.error("Facebook OAuth Callback Error:", err);
+    res.status(500).send(`
+      <html>
+        <body style="background: #0d0e12; color: #f3f4f6; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+          <div style="text-align: center; padding: 24px; background: rgba(255,255,255,0.03); border: 1px solid rgba(244,63,94,0.2); border-radius: 12px; max-width: 380px;">
+            <p style="font-size: 40px; margin: 0 0 12px 0;">⚠️</p>
+            <h3 style="color: #f43f5e; margin: 0 0 8px 0;">เกิดข้อผิดพลาดในการเชื่อมต่อ</h3>
+            <p style="font-size: 13px; color: #9ca3af; line-height: 1.5; margin: 0 0 16px 0;">${err.message || "Unknown token exchange failure"}</p>
+            <button onclick="window.close()" style="background: #3b82f6; border: none; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer;">ปิดหน้าต่างนี้</button>
+          </div>
+        </body>
+      </html>
+    `);
+  }
+});
+
+// Fetch Selected User Pages list
+app.post("/api/facebook/get-pages", async (req, res) => {
+  const { accessToken, photographerName } = req.body;
+  if (!accessToken) return res.status(400).json({ error: "Access Token is missing" });
+
+  if (accessToken.startsWith("sb_")) {
+    const pName = photographerName || "ช่างภาพแสนดี";
+    return res.json({
+      pages: [
+        {
+          id: "sb_page_101",
+          name: `📸 เพจหลักของแบรนด์ - ${pName} Studio`,
+          access_token: "sb_page_token_101_v2",
+          picture: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?q=80&w=100&auto=format&fit=crop"
+        },
+        {
+          id: "sb_page_102",
+          name: `🎨 พอร์ตผลงานพิเศษ - ${pName} Gallery & Review`,
+          access_token: "sb_page_token_102_v2",
+          picture: "https://images.unsplash.com/photo-1452780212940-6f5c0d14d848?q=80&w=100&auto=format&fit=crop"
+        }
+      ]
+    });
+  }
+
+  try {
+    const pagesUrl = `https://graph.facebook.com/v20.0/me/accounts?access_token=${accessToken}&fields=name,access_token,picture{url}`;
+    const pageRes = await fetch(pagesUrl);
+    const pageData = await pageRes.json() as any;
+
+    if (pageData.error) {
+      return res.status(400).json({ error: pageData.error.message });
+    }
+
+    const pages = (pageData.data || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      access_token: p.access_token,
+      picture: p.picture?.data?.url || null
+    }));
+
+    res.json({ pages });
+  } catch (err: any) {
+    console.error("Facebook API Get Pages Error:", err);
+    res.status(500).json({ error: "ล้มเหลวในการเชื่อมโยงแฟนเพจ: " + err.message });
+  }
+});
+
+// Post feed message to selected page
+app.post("/api/facebook/post-feed", async (req, res) => {
+  const { pageId, pageAccessToken, message, link } = req.body;
+  if (!pageId || !pageAccessToken || !message) {
+    return res.status(400).json({ error: "ข้อมูลสำหรับโพสต์ข้อความหน้าเพจไม่ครบถ้วน" });
+  }
+
+  if (pageAccessToken.startsWith("sb_")) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const randomPostId = Math.floor(Math.random() * 1000000000000).toString();
+    return res.json({
+      success: true,
+      postId: `${pageId}_${randomPostId}`,
+      permalinkUrl: `https://facebook.com/${pageId}/posts/${randomPostId}`,
+      isSandbox: true
+    });
+  }
+
+  try {
+    const postUrl = `https://graph.facebook.com/v20.0/${pageId}/feed`;
+    const params: any = { message: message, access_token: pageAccessToken };
+    if (link) params.link = link;
+
+    const postRes = await fetch(postUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params)
+    });
+
+    const postData = await postRes.json() as any;
+    if (postData.error) {
+      return res.status(400).json({ error: postData.error.message });
+    }
+
+    res.json({
+      success: true,
+      postId: postData.id,
+      permalinkUrl: `https://facebook.com/${postData.id}`,
+      isSandbox: false
+    });
+  } catch (err: any) {
+    console.error("Facebook Post Feed Error:", err);
+    res.status(500).json({ error: "ล้มเหลวในการโพสต์: " + err.message });
+  }
+});
+
+// Start Server with Compliant Vite Integration
 const startAppServer = async () => {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -994,7 +866,7 @@ const startAppServer = async () => {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Server] Photo Client Hunter AI running on port ${PORT}`);
+    console.log(`[Server] Photo Client Hunter AI active on port ${PORT}`);
   });
 };
 

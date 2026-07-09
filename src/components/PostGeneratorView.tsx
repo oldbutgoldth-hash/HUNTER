@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { PhotographerProfile, GeneratedPosts } from "../types";
+import FacebookHub, { FacebookPage } from "./FacebookHub";
 
 interface PostGeneratorViewProps {
   profile: PhotographerProfile;
@@ -18,6 +19,52 @@ export default function PostGeneratorView({ profile, onPostCreated }: PostGenera
   const [error, setError] = useState<string | null>(null);
   const [activeOutputTab, setActiveOutputTab] = useState<"personal" | "page" | "group" | "reels" | "story">("personal");
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
+  const [selectedFbPage, setSelectedFbPage] = useState<FacebookPage | null>(null);
+  const [publishingToFb, setPublishingToFb] = useState(false);
+  const [fbPublishResult, setFbPublishResult] = useState<{ postId: string; permalinkUrl: string } | null>(null);
+
+  const handlePublishToFb = async () => {
+    if (!selectedFbPage || !posts) return;
+    setPublishingToFb(true);
+    setFbPublishResult(null);
+    setError(null);
+
+    const textToPublish = appendCtaAndHashtags(activeContent());
+
+    try {
+      const res = await fetch("/api/facebook/post-feed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageId: selectedFbPage.id,
+          pageAccessToken: selectedFbPage.access_token,
+          message: textToPublish
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error("เซิร์ฟเวอร์ปฏิเสธการโพสต์ กรุณาตรวจสอบสิทธิ์แฟนเพจ");
+      }
+
+      const data = await res.json();
+      if (data.success) {
+        setFbPublishResult({
+          postId: data.postId,
+          permalinkUrl: data.permalinkUrl
+        });
+        onPostCreated(); // Increment statistical counter
+      } else {
+        throw new Error("ไม่ได้รับข้อมูลการโพสต์สำเร็จที่ถูกต้อง");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError("การโพสต์ล้มเหลว: " + (err.message || "เกิดข้อขัดข้องทางเทคนิค"));
+    } finally {
+      setPublishingToFb(false);
+    }
+  };
+
 
   const [posts, setPosts] = useState<GeneratedPosts | null>(() => {
     // Elegant fallback initial templates based on profile style
@@ -318,6 +365,53 @@ export default function PostGeneratorView({ profile, onPostCreated }: PostGenera
                     </p>
                   )}
                 </div>
+
+                {/* Facebook Posting Control */}
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-blue-950/15 border border-blue-500/20 p-3 rounded-lg">
+                  <div className="md:col-span-8">
+                    <FacebookHub compact={true} photographerName={profile.name} onPageSelected={setSelectedFbPage} />
+                  </div>
+                  <div className="md:col-span-4 flex flex-col justify-center">
+                    <button
+                      type="button"
+                      disabled={!selectedFbPage || publishingToFb || loading}
+                      onClick={handlePublishToFb}
+                      className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:border-slate-700/50 text-white text-[11px] font-bold rounded-lg border border-blue-500/20 shadow-lg flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      {publishingToFb ? (
+                        <>
+                          <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                          กำลังโพสต์...
+                        </>
+                      ) : (
+                        <>
+                          <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                          </svg>
+                          โพสต์ลงเพจทันที
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Facebook Success Notice */}
+                {fbPublishResult && (
+                  <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg text-xs flex justify-between items-center animate-fade-in">
+                    <div className="space-y-0.5">
+                      <p className="font-bold flex items-center gap-1"><span>🎉</span> โพสต์บนแฟนเพจสำเร็จ!</p>
+                      <p className="text-[10px] text-gray-400 font-mono">ID: {fbPublishResult.postId.slice(0, 24)}...</p>
+                    </div>
+                    <a
+                      href={fbPublishResult.permalinkUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold rounded transition text-[10px] flex items-center gap-1 cursor-pointer"
+                    >
+                      เปิดดูโพสต์ ➔
+                    </a>
+                  </div>
+                )}
               </div>
 
               {/* Extras Column */}
